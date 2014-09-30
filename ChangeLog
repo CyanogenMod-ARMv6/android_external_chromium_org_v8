@@ -1,3 +1,23 @@
+2014-09-30: Version 3.29.93
+
+        Add a getter for the address and size of the code range to the pulic API
+        (issue 3598).
+
+        Convert `obj` ToObject in Object.keys() (issue 3587).
+
+        Performance and stability improvements on all platforms.
+
+
+2014-09-29: Version 3.29.92
+
+        Performance and stability improvements on all platforms.
+
+
+2014-09-26: Version 3.29.91
+
+        Performance and stability improvements on all platforms.
+
+
 2014-09-25: Version 3.29.88
 
         Performance and stability improvements on all platforms.

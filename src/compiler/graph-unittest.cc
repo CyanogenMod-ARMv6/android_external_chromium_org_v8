@@ -744,6 +744,7 @@ Matcher<Node*> IsStore(const Matcher<MachineType>& type_matcher,
         new IsBinopMatcher(IrOpcode::k##Name, lhs_matcher, rhs_matcher)); \
   }
 IS_BINOP_MATCHER(NumberLessThan)
+IS_BINOP_MATCHER(NumberSubtract)
 IS_BINOP_MATCHER(Word32And)
 IS_BINOP_MATCHER(Word32Sar)
 IS_BINOP_MATCHER(Word32Shl)
@@ -769,6 +770,7 @@ IS_UNOP_MATCHER(ChangeInt32ToFloat64)
 IS_UNOP_MATCHER(ChangeInt32ToInt64)
 IS_UNOP_MATCHER(ChangeUint32ToFloat64)
 IS_UNOP_MATCHER(ChangeUint32ToUint64)
+IS_UNOP_MATCHER(TruncateFloat64ToFloat32)
 IS_UNOP_MATCHER(TruncateFloat64ToInt32)
 IS_UNOP_MATCHER(TruncateInt64ToInt32)
 IS_UNOP_MATCHER(Float64Sqrt)
