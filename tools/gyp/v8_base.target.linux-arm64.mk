@@ -37,6 +37,7 @@ LOCAL_SRC_FILES := \
 	v8/src/ast.cc \
 	v8/src/background-parsing-task.cc \
 	v8/src/bailout-reason.cc \
+	v8/src/basic-block-profiler.cc \
 	v8/src/bignum-dtoa.cc \
 	v8/src/bignum.cc \
 	v8/src/bootstrapper.cc \
@@ -50,6 +51,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compilation-cache.cc \
 	v8/src/compiler/access-builder.cc \
 	v8/src/compiler/ast-graph-builder.cc \
+	v8/src/compiler/basic-block-instrumentor.cc \
 	v8/src/compiler/change-lowering.cc \
 	v8/src/compiler/code-generator.cc \
 	v8/src/compiler/common-operator.cc \
@@ -193,7 +195,18 @@ LOCAL_SRC_FILES := \
 	v8/src/regexp-stack.cc \
 	v8/src/rewriter.cc \
 	v8/src/runtime-profiler.cc \
-	v8/src/runtime.cc \
+	v8/src/runtime/runtime-collections.cc \
+	v8/src/runtime/runtime-compiler.cc \
+	v8/src/runtime/runtime-i18n.cc \
+	v8/src/runtime/runtime-json.cc \
+	v8/src/runtime/runtime-maths.cc \
+	v8/src/runtime/runtime-numbers.cc \
+	v8/src/runtime/runtime-regexp.cc \
+	v8/src/runtime/runtime-strings.cc \
+	v8/src/runtime/runtime-test.cc \
+	v8/src/runtime/runtime-typedarray.cc \
+	v8/src/runtime/runtime-uri.cc \
+	v8/src/runtime/runtime.cc \
 	v8/src/safepoint-table.cc \
 	v8/src/sampler.cc \
 	v8/src/scanner-character-streams.cc \
@@ -475,6 +488,9 @@ LOCAL_ASFLAGS := $(LOCAL_CFLAGS)
 LOCAL_SHARED_LIBRARIES := \
 	libstlport \
 	libdl
+
+### Set directly by aosp_build_settings.
+LOCAL_FDO_SUPPORT := true
 
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules
