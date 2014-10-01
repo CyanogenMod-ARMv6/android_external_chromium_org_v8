@@ -68,12 +68,14 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/js-generic-lowering.cc \
 	v8/src/compiler/js-graph.cc \
 	v8/src/compiler/js-inlining.cc \
+	v8/src/compiler/js-operator.cc \
 	v8/src/compiler/js-typed-lowering.cc \
 	v8/src/compiler/linkage.cc \
 	v8/src/compiler/machine-operator-reducer.cc \
 	v8/src/compiler/machine-operator.cc \
 	v8/src/compiler/machine-type.cc \
 	v8/src/compiler/node-cache.cc \
+	v8/src/compiler/node-matchers.cc \
 	v8/src/compiler/node.cc \
 	v8/src/compiler/operator.cc \
 	v8/src/compiler/pipeline.cc \
@@ -196,12 +198,22 @@ LOCAL_SRC_FILES := \
 	v8/src/runtime-profiler.cc \
 	v8/src/runtime/runtime-collections.cc \
 	v8/src/runtime/runtime-compiler.cc \
+	v8/src/runtime/runtime-date.cc \
+	v8/src/runtime/runtime-debug.cc \
+	v8/src/runtime/runtime-function.cc \
+	v8/src/runtime/runtime-generator.cc \
 	v8/src/runtime/runtime-i18n.cc \
 	v8/src/runtime/runtime-json.cc \
+	v8/src/runtime/runtime-literals.cc \
+	v8/src/runtime/runtime-liveedit.cc \
 	v8/src/runtime/runtime-maths.cc \
 	v8/src/runtime/runtime-numbers.cc \
+	v8/src/runtime/runtime-observe.cc \
+	v8/src/runtime/runtime-proxy.cc \
 	v8/src/runtime/runtime-regexp.cc \
+	v8/src/runtime/runtime-scopes.cc \
 	v8/src/runtime/runtime-strings.cc \
+	v8/src/runtime/runtime-symbol.cc \
 	v8/src/runtime/runtime-test.cc \
 	v8/src/runtime/runtime-typedarray.cc \
 	v8/src/runtime/runtime-uri.cc \
