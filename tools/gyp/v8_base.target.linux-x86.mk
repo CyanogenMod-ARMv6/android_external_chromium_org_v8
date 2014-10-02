@@ -132,7 +132,6 @@ LOCAL_SRC_FILES := \
 	v8/src/heap/objects-visiting.cc \
 	v8/src/heap/spaces.cc \
 	v8/src/heap/store-buffer.cc \
-	v8/src/heap/sweeper-thread.cc \
 	v8/src/hydrogen-bce.cc \
 	v8/src/hydrogen-bch.cc \
 	v8/src/hydrogen-canonicalize.cc \
@@ -197,6 +196,7 @@ LOCAL_SRC_FILES := \
 	v8/src/regexp-stack.cc \
 	v8/src/rewriter.cc \
 	v8/src/runtime-profiler.cc \
+	v8/src/runtime/runtime-classes.cc \
 	v8/src/runtime/runtime-collections.cc \
 	v8/src/runtime/runtime-compiler.cc \
 	v8/src/runtime/runtime-date.cc \
