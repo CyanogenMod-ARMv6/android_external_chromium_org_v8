@@ -263,6 +263,9 @@ LOCAL_SRC_FILES := \
 	v8/src/mips/macro-assembler-mips.cc \
 	v8/src/mips/regexp-macro-assembler-mips.cc \
 	v8/src/mips/simulator-mips.cc \
+	v8/src/compiler/mips/code-generator-mips.cc \
+	v8/src/compiler/mips/instruction-selector-mips.cc \
+	v8/src/compiler/mips/linkage-mips.cc \
 	v8/src/ic/mips/access-compiler-mips.cc \
 	v8/src/ic/mips/handler-compiler-mips.cc \
 	v8/src/ic/mips/ic-mips.cc \
