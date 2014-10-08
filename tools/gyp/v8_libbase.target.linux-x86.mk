@@ -27,6 +27,7 @@ LOCAL_SRC_FILES := \
 	v8/src/base/bits.cc \
 	v8/src/base/cpu.cc \
 	v8/src/base/division-by-constant.cc \
+	v8/src/base/functional.cc \
 	v8/src/base/logging.cc \
 	v8/src/base/once.cc \
 	v8/src/base/platform/time.cc \
