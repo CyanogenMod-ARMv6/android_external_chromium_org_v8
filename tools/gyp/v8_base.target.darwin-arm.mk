@@ -238,13 +238,14 @@ LOCAL_SRC_FILES := \
 	v8/src/types.cc \
 	v8/src/typing.cc \
 	v8/src/unicode.cc \
+	v8/src/unicode-decoder.cc \
 	v8/src/utils.cc \
 	v8/src/v8.cc \
 	v8/src/v8threads.cc \
 	v8/src/variables.cc \
 	v8/src/version.cc \
 	v8/src/zone.cc \
-	v8/third_party/fdlibm/fdlibm.cc \
+	v8/src/third_party/fdlibm/fdlibm.cc \
 	v8/src/arm/assembler-arm.cc \
 	v8/src/arm/builtins-arm.cc \
 	v8/src/arm/code-stubs-arm.cc \
