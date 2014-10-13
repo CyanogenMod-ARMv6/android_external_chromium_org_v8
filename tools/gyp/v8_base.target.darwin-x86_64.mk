@@ -43,6 +43,7 @@ LOCAL_SRC_FILES := \
 	v8/src/bootstrapper.cc \
 	v8/src/builtins.cc \
 	v8/src/cached-powers.cc \
+	v8/src/char-predicates.cc \
 	v8/src/checks.cc \
 	v8/src/code-factory.cc \
 	v8/src/code-stubs.cc \
@@ -196,6 +197,8 @@ LOCAL_SRC_FILES := \
 	v8/src/regexp-stack.cc \
 	v8/src/rewriter.cc \
 	v8/src/runtime-profiler.cc \
+	v8/src/runtime/runtime-api.cc \
+	v8/src/runtime/runtime-array.cc \
 	v8/src/runtime/runtime-classes.cc \
 	v8/src/runtime/runtime-collections.cc \
 	v8/src/runtime/runtime-compiler.cc \
@@ -204,11 +207,13 @@ LOCAL_SRC_FILES := \
 	v8/src/runtime/runtime-function.cc \
 	v8/src/runtime/runtime-generator.cc \
 	v8/src/runtime/runtime-i18n.cc \
+	v8/src/runtime/runtime-internal.cc \
 	v8/src/runtime/runtime-json.cc \
 	v8/src/runtime/runtime-literals.cc \
 	v8/src/runtime/runtime-liveedit.cc \
 	v8/src/runtime/runtime-maths.cc \
 	v8/src/runtime/runtime-numbers.cc \
+	v8/src/runtime/runtime-object.cc \
 	v8/src/runtime/runtime-observe.cc \
 	v8/src/runtime/runtime-proxy.cc \
 	v8/src/runtime/runtime-regexp.cc \
