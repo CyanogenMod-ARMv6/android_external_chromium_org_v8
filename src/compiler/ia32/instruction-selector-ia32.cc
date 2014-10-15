@@ -259,8 +259,19 @@ static void VisitBinop(InstructionSelector* selector, Node* node,
   size_t output_count = 0;
 
   // TODO(turbofan): match complex addressing modes.
-  if (g.CanBeImmediate(right)) {
-    inputs[input_count++] = g.Use(left);
+  if (left == right) {
+    // If both inputs refer to the same operand, enforce allocating a register
+    // for both of them to ensure that we don't end up generating code like
+    // this:
+    //
+    //   mov eax, [ebp-0x10]
+    //   add eax, [ebp-0x10]
+    //   jo label
+    InstructionOperand* const input = g.UseRegister(left);
+    inputs[input_count++] = input;
+    inputs[input_count++] = input;
+  } else if (g.CanBeImmediate(right)) {
+    inputs[input_count++] = g.UseRegister(left);
     inputs[input_count++] = g.UseImmediate(right);
   } else {
     if (node->op()->HasProperty(Operator::kCommutative) &&
@@ -315,7 +326,7 @@ void InstructionSelector::VisitWord32Xor(Node* node) {
   IA32OperandGenerator g(this);
   Int32BinopMatcher m(node);
   if (m.right().Is(-1)) {
-    Emit(kIA32Not, g.DefineSameAsFirst(node), g.Use(m.left().node()));
+    Emit(kIA32Not, g.DefineSameAsFirst(node), g.UseRegister(m.left().node()));
   } else {
     VisitBinop(this, node, kIA32Xor);
   }
@@ -330,7 +341,7 @@ static inline void VisitShift(InstructionSelector* selector, Node* node,
   Node* right = node->InputAt(1);
 
   if (g.CanBeImmediate(right)) {
-    selector->Emit(opcode, g.DefineSameAsFirst(node), g.Use(left),
+    selector->Emit(opcode, g.DefineSameAsFirst(node), g.UseRegister(left),
                    g.UseImmediate(right));
   } else {
     Int32BinopMatcher m(node);
@@ -340,7 +351,7 @@ static inline void VisitShift(InstructionSelector* selector, Node* node,
         right = mright.left().node();
       }
     }
-    selector->Emit(opcode, g.DefineSameAsFirst(node), g.Use(left),
+    selector->Emit(opcode, g.DefineSameAsFirst(node), g.UseRegister(left),
                    g.UseFixed(right, ecx));
   }
 }
@@ -452,6 +463,16 @@ void InstructionSelector::VisitInt32Mul(Node* node) {
     Emit(kIA32Imul, g.DefineSameAsFirst(node), g.UseRegister(left),
          g.Use(right));
   }
+}
+
+
+void InstructionSelector::VisitInt32MulHigh(Node* node) {
+  IA32OperandGenerator g(this);
+  InstructionOperand* temps[] = {g.TempRegister(eax)};
+  size_t temp_count = arraysize(temps);
+  Emit(kIA32ImulHigh, g.DefineAsFixed(node, edx),
+       g.UseFixed(node->InputAt(0), eax), g.UseRegister(node->InputAt(1)),
+       temp_count, temps);
 }
 
 
@@ -664,13 +685,6 @@ static inline void VisitWordCompare(InstructionSelector* selector, Node* node,
 }
 
 
-static void VisitWordTest(InstructionSelector* selector, Node* node,
-                          FlagsContinuation* cont) {
-  IA32OperandGenerator g(selector);
-  VisitCompare(selector, kIA32Test, g.Use(node), g.TempImmediate(-1), cont);
-}
-
-
 // Shared routine for multiple float compare operations.
 static void VisitFloat64Compare(InstructionSelector* selector, Node* node,
                                 FlagsContinuation* cont) {
@@ -684,7 +698,7 @@ static void VisitFloat64Compare(InstructionSelector* selector, Node* node,
 
 void InstructionSelector::VisitBranch(Node* branch, BasicBlock* tbranch,
                                       BasicBlock* fbranch) {
-  OperandGenerator g(this);
+  IA32OperandGenerator g(this);
   Node* user = branch;
   Node* value = branch->InputAt(0);
 
@@ -770,7 +784,7 @@ void InstructionSelector::VisitBranch(Node* branch, BasicBlock* tbranch,
   }
 
   // Branch could not be combined with a compare, emit compare against 0.
-  VisitWordTest(this, value, &cont);
+  VisitCompare(this, kIA32Cmp, g.Use(value), g.TempImmediate(0), &cont);
 }
 
 
@@ -789,7 +803,6 @@ void InstructionSelector::VisitWord32Equal(Node* const node) {
         default:
           break;
       }
-      return VisitWordTest(this, value, &cont);
     }
   }
   return VisitWordCompare(this, node, kIA32Cmp, &cont, false);

@@ -4,6 +4,8 @@
 
 #include <stdlib.h>
 
+#include <fstream>  // NOLINT(readability/streams)
+
 #include "src/v8.h"
 
 #include "src/ast.h"
@@ -1909,12 +1911,6 @@ bool Isolate::Init(Deserializer* des) {
   bootstrapper_->Initialize(create_heap_objects);
   builtins_.SetUp(this, create_heap_objects);
 
-  if (FLAG_log_internal_timer_events) {
-    set_event_logger(Logger::DefaultTimerEventsLogger);
-  } else {
-    set_event_logger(Logger::EmptyTimerEventsLogger);
-  }
-
   // Set default value if not yet set.
   // TODO(yangguo): move this to ResourceConstraints::ConfigureDefaults
   // once ResourceConstraints becomes an argument to the Isolate constructor.
@@ -1950,6 +1946,16 @@ bool Isolate::Init(Deserializer* des) {
   if (!create_heap_objects) Assembler::QuietNaN(heap_.nan_value());
 
   runtime_profiler_ = new RuntimeProfiler(this);
+
+  if (FLAG_trace_turbo) {
+    // Erase the file.
+    char buffer[512];
+    Vector<char> filename(buffer, sizeof(buffer));
+    GetTurboCfgFileName(filename);
+    std::ofstream turbo_cfg_stream(filename.start(),
+                                   std::fstream::out | std::fstream::trunc);
+  }
+
 
   // If we are deserializing, log non-function code objects and compiled
   // functions found in the snapshot.
@@ -2361,6 +2367,16 @@ BasicBlockProfiler* Isolate::GetOrCreateBasicBlockProfiler() {
     basic_block_profiler_ = new BasicBlockProfiler();
   }
   return basic_block_profiler_;
+}
+
+
+void Isolate::GetTurboCfgFileName(Vector<char> filename) {
+  if (FLAG_trace_turbo_cfg_file == NULL) {
+    SNPrintF(filename, "turbo-%d-%d.cfg", base::OS::GetCurrentProcessId(),
+             id());
+  } else {
+    StrNCpy(filename, FLAG_trace_turbo_cfg_file, filename.length());
+  }
 }
 
 
