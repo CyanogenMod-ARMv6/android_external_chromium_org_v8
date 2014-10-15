@@ -254,6 +254,7 @@ LOCAL_SHARED_LIBRARIES := \
 
 ### Set directly by aosp_build_settings.
 LOCAL_FDO_SUPPORT := true
+LOCAL_CLANG := false
 
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules

@@ -23,6 +23,7 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(GYP_TARGET_DEPENDENCIES) $(GYP_GENERATED_OUTP
 ### Rules for final target.
 ### Set directly by aosp_build_settings.
 LOCAL_FDO_SUPPORT := true
+LOCAL_CLANG := false
 
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules
