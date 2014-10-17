@@ -56,6 +56,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/code-generator.cc \
 	v8/src/compiler/common-operator.cc \
 	v8/src/compiler/control-builders.cc \
+	v8/src/compiler/control-reducer.cc \
 	v8/src/compiler/gap-resolver.cc \
 	v8/src/compiler/graph-builder.cc \
 	v8/src/compiler/graph-reducer.cc \
