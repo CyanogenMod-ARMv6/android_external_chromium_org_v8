@@ -6,6 +6,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := v8_tools_gyp_v8_base_gyp
 LOCAL_MODULE_SUFFIX := .a
 LOCAL_MODULE_TARGET_ARCH := $(TARGET_$(GYP_VAR_PREFIX)ARCH)
+LOCAL_SDK_VERSION := 19
 gyp_intermediate_dir := $(call local-intermediates-dir,,$(GYP_VAR_PREFIX))
 gyp_shared_intermediate_dir := $(call intermediates-dir-for,GYP,shared,,,$(GYP_VAR_PREFIX))
 
@@ -364,10 +365,7 @@ LOCAL_C_INCLUDES_Debug := \
 	$(LOCAL_PATH)/v8 \
 	$(gyp_shared_intermediate_dir) \
 	$(LOCAL_PATH)/third_party/icu/source/i18n \
-	$(LOCAL_PATH)/third_party/icu/source/common \
-	$(PWD)/frameworks/wilhelm/include \
-	$(PWD)/bionic \
-	$(PWD)/external/stlport/stlport
+	$(LOCAL_PATH)/third_party/icu/source/common
 
 
 # Flags passed to only C++ (and not C) files.
@@ -469,10 +467,7 @@ LOCAL_C_INCLUDES_Release := \
 	$(LOCAL_PATH)/v8 \
 	$(gyp_shared_intermediate_dir) \
 	$(LOCAL_PATH)/third_party/icu/source/i18n \
-	$(LOCAL_PATH)/third_party/icu/source/common \
-	$(PWD)/frameworks/wilhelm/include \
-	$(PWD)/bionic \
-	$(PWD)/external/stlport/stlport
+	$(LOCAL_PATH)/third_party/icu/source/common
 
 
 # Flags passed to only C++ (and not C) files.
@@ -495,14 +490,10 @@ LOCAL_C_INCLUDES := $(GYP_COPIED_SOURCE_ORIGIN_DIRS) $(LOCAL_C_INCLUDES_$(GYP_CO
 LOCAL_CPPFLAGS := $(LOCAL_CPPFLAGS_$(GYP_CONFIGURATION))
 LOCAL_ASFLAGS := $(LOCAL_CFLAGS)
 ### Rules for final target.
-
-LOCAL_SHARED_LIBRARIES := \
-	libstlport \
-	libdl
-
 ### Set directly by aosp_build_settings.
 LOCAL_FDO_SUPPORT := true
 LOCAL_CLANG := false
+LOCAL_NDK_STL_VARIANT := stlport_static
 
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules
