@@ -70,6 +70,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/js-generic-lowering.cc \
 	v8/src/compiler/js-graph.cc \
 	v8/src/compiler/js-inlining.cc \
+	v8/src/compiler/js-intrinsic-builder.cc \
 	v8/src/compiler/js-operator.cc \
 	v8/src/compiler/js-typed-lowering.cc \
 	v8/src/compiler/linkage.cc \
