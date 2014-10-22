@@ -33,6 +33,7 @@ LOCAL_SRC_FILES := \
 	v8/src/assembler.cc \
 	v8/src/assert-scope.cc \
 	v8/src/ast-value-factory.cc \
+	v8/src/ast-numbering.cc \
 	v8/src/ast.cc \
 	v8/src/background-parsing-task.cc \
 	v8/src/bailout-reason.cc \
@@ -93,6 +94,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/typer.cc \
 	v8/src/compiler/value-numbering-reducer.cc \
 	v8/src/compiler/verifier.cc \
+	v8/src/compiler/zone-pool.cc \
 	v8/src/compiler.cc \
 	v8/src/contexts.cc \
 	v8/src/conversions.cc \
