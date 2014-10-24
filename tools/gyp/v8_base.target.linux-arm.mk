@@ -50,6 +50,7 @@ LOCAL_SRC_FILES := \
 	v8/src/code-stubs-hydrogen.cc \
 	v8/src/codegen.cc \
 	v8/src/compilation-cache.cc \
+	v8/src/compilation-statistics.cc \
 	v8/src/compiler/access-builder.cc \
 	v8/src/compiler/ast-graph-builder.cc \
 	v8/src/compiler/basic-block-instrumentor.cc \
@@ -83,6 +84,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/node.cc \
 	v8/src/compiler/operator.cc \
 	v8/src/compiler/pipeline.cc \
+	v8/src/compiler/pipeline-statistics.cc \
 	v8/src/compiler/raw-machine-assembler.cc \
 	v8/src/compiler/register-allocator.cc \
 	v8/src/compiler/schedule.cc \
