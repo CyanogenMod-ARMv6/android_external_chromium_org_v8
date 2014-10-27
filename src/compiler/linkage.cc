@@ -15,7 +15,7 @@ namespace internal {
 namespace compiler {
 
 
-OStream& operator<<(OStream& os, const CallDescriptor::Kind& k) {
+std::ostream& operator<<(std::ostream& os, const CallDescriptor::Kind& k) {
   switch (k) {
     case CallDescriptor::kCallCodeObject:
       os << "Code";
@@ -31,7 +31,7 @@ OStream& operator<<(OStream& os, const CallDescriptor::Kind& k) {
 }
 
 
-OStream& operator<<(OStream& os, const CallDescriptor& d) {
+std::ostream& operator<<(std::ostream& os, const CallDescriptor& d) {
   // TODO(svenpanne) Output properties etc. and be less cryptic.
   return os << d.kind() << ":" << d.debug_name() << ":r" << d.ReturnCount()
             << "j" << d.JSParameterCount() << "i" << d.InputCount() << "f"
@@ -116,16 +116,96 @@ bool Linkage::NeedsFrameState(Runtime::FunctionId function) {
   // TODO(jarin) At the moment, we only add frame state for
   // few chosen runtime functions.
   switch (function) {
-    case Runtime::kDebugBreak:
-    case Runtime::kDebugGetLoadedScripts:
-    case Runtime::kDeoptimizeFunction:
-    case Runtime::kInlineCallFunction:
-    case Runtime::kPrepareStep:
-    case Runtime::kSetScriptBreakPoint:
-    case Runtime::kStackGuard:
+    case Runtime::kApply:
+    case Runtime::kArrayBufferNeuter:
+    case Runtime::kArrayConcat:
+    case Runtime::kBasicJSONStringify:
     case Runtime::kCheckExecutionState:
-    case Runtime::kDebugEvaluate:
     case Runtime::kCollectStackTrace:
+    case Runtime::kCompileLazy:
+    case Runtime::kCompileOptimized:
+    case Runtime::kCompileString:
+    case Runtime::kCreateObjectLiteral:
+    case Runtime::kDebugBreak:
+    case Runtime::kDataViewSetInt8:
+    case Runtime::kDataViewSetUint8:
+    case Runtime::kDataViewSetInt16:
+    case Runtime::kDataViewSetUint16:
+    case Runtime::kDataViewSetInt32:
+    case Runtime::kDataViewSetUint32:
+    case Runtime::kDataViewSetFloat32:
+    case Runtime::kDataViewSetFloat64:
+    case Runtime::kDataViewGetInt8:
+    case Runtime::kDataViewGetUint8:
+    case Runtime::kDataViewGetInt16:
+    case Runtime::kDataViewGetUint16:
+    case Runtime::kDataViewGetInt32:
+    case Runtime::kDataViewGetUint32:
+    case Runtime::kDataViewGetFloat32:
+    case Runtime::kDataViewGetFloat64:
+    case Runtime::kDebugEvaluate:
+    case Runtime::kDebugEvaluateGlobal:
+    case Runtime::kDebugGetLoadedScripts:
+    case Runtime::kDebugGetPropertyDetails:
+    case Runtime::kDebugPromiseEvent:
+    case Runtime::kDefineAccessorPropertyUnchecked:
+    case Runtime::kDefineDataPropertyUnchecked:
+    case Runtime::kDeleteProperty:
+    case Runtime::kDeoptimizeFunction:
+    case Runtime::kFunctionBindArguments:
+    case Runtime::kGetDefaultReceiver:
+    case Runtime::kGetFrameCount:
+    case Runtime::kGetOwnProperty:
+    case Runtime::kGetOwnPropertyNames:
+    case Runtime::kGetPropertyNamesFast:
+    case Runtime::kGetPrototype:
+    case Runtime::kInlineArguments:
+    case Runtime::kInlineCallFunction:
+    case Runtime::kInlineDateField:
+    case Runtime::kInlineRegExpExec:
+    case Runtime::kInternalSetPrototype:
+    case Runtime::kInterrupt:
+    case Runtime::kIsPropertyEnumerable:
+    case Runtime::kIsSloppyModeFunction:
+    case Runtime::kLiveEditGatherCompileInfo:
+    case Runtime::kLoadLookupSlot:
+    case Runtime::kLoadLookupSlotNoReferenceError:
+    case Runtime::kMaterializeRegExpLiteral:
+    case Runtime::kNewObject:
+    case Runtime::kNewObjectFromBound:
+    case Runtime::kNewObjectWithAllocationSite:
+    case Runtime::kObjectFreeze:
+    case Runtime::kOwnKeys:
+    case Runtime::kParseJson:
+    case Runtime::kPrepareStep:
+    case Runtime::kPreventExtensions:
+    case Runtime::kPromiseRejectEvent:
+    case Runtime::kPromiseRevokeReject:
+    case Runtime::kRegExpCompile:
+    case Runtime::kRegExpExecMultiple:
+    case Runtime::kResolvePossiblyDirectEval:
+    case Runtime::kSetPrototype:
+    case Runtime::kSetScriptBreakPoint:
+    case Runtime::kSparseJoinWithSeparator:
+    case Runtime::kStackGuard:
+    case Runtime::kStoreKeyedToSuper_Sloppy:
+    case Runtime::kStoreKeyedToSuper_Strict:
+    case Runtime::kStoreToSuper_Sloppy:
+    case Runtime::kStoreToSuper_Strict:
+    case Runtime::kStoreLookupSlot:
+    case Runtime::kStringBuilderConcat:
+    case Runtime::kStringBuilderJoin:
+    case Runtime::kStringReplaceGlobalRegExpWithString:
+    case Runtime::kThrowNonMethodError:
+    case Runtime::kThrowNotDateError:
+    case Runtime::kThrowReferenceError:
+    case Runtime::kThrowUnsupportedSuperError:
+    case Runtime::kThrow:
+    case Runtime::kTypedArraySetFastCases:
+    case Runtime::kTypedArrayInitializeFromArrayLike:
+#ifdef V8_I18N_SUPPORT
+    case Runtime::kGetImplFromInitializedIntlObject:
+#endif
       return true;
     default:
       return false;

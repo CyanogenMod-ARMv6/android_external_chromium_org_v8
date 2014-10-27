@@ -13,7 +13,7 @@ namespace v8 {
 namespace internal {
 namespace compiler {
 
-OStream& operator<<(OStream& os, BaseTaggedness base_taggedness) {
+std::ostream& operator<<(std::ostream& os, BaseTaggedness base_taggedness) {
   switch (base_taggedness) {
     case kUntaggedBase:
       return os << "untagged base";
@@ -25,9 +25,53 @@ OStream& operator<<(OStream& os, BaseTaggedness base_taggedness) {
 }
 
 
+bool operator==(FieldAccess const& lhs, FieldAccess const& rhs) {
+  return lhs.base_is_tagged == rhs.base_is_tagged && lhs.offset == rhs.offset &&
+         lhs.machine_type == rhs.machine_type;
+}
+
+
+bool operator!=(FieldAccess const& lhs, FieldAccess const& rhs) {
+  return !(lhs == rhs);
+}
+
+
+size_t hash_value(FieldAccess const& access) {
+  return base::hash_combine(access.base_is_tagged, access.offset,
+                            access.machine_type);
+}
+
+
+std::ostream& operator<<(std::ostream& os, FieldAccess const& access) {
+  os << "[" << access.base_is_tagged << ", " << access.offset << ", ";
+#ifdef OBJECT_PRINT
+  Handle<Name> name;
+  if (access.name.ToHandle(&name)) {
+    name->Print(os);
+    os << ", ";
+  }
+#endif
+  access.type->PrintTo(os);
+  os << ", " << access.machine_type << "]";
+  return os;
+}
+
+
+std::ostream& operator<<(std::ostream& os, BoundsCheckMode bounds_check_mode) {
+  switch (bounds_check_mode) {
+    case kNoBoundsCheck:
+      return os << "no bounds check";
+    case kTypedArrayBoundsCheck:
+      return os << "ignore out of bounds";
+  }
+  UNREACHABLE();
+  return os;
+}
+
+
 bool operator==(ElementAccess const& lhs, ElementAccess const& rhs) {
   return lhs.base_is_tagged == rhs.base_is_tagged &&
-         lhs.header_size == rhs.header_size && lhs.type == rhs.type &&
+         lhs.header_size == rhs.header_size &&
          lhs.machine_type == rhs.machine_type;
 }
 
@@ -37,10 +81,16 @@ bool operator!=(ElementAccess const& lhs, ElementAccess const& rhs) {
 }
 
 
-OStream& operator<<(OStream& os, ElementAccess const& access) {
-  os << "[" << access.base_is_tagged << ", " << access.header_size << ", ";
+size_t hash_value(ElementAccess const& access) {
+  return base::hash_combine(access.base_is_tagged, access.header_size,
+                            access.machine_type);
+}
+
+
+std::ostream& operator<<(std::ostream& os, ElementAccess const& access) {
+  os << access.base_is_tagged << ", " << access.header_size << ", ";
   access.type->PrintTo(os);
-  os << ", " << access.machine_type << "]";
+  os << ", " << access.machine_type << ", " << access.bounds_check;
   return os;
 }
 
@@ -59,40 +109,6 @@ const ElementAccess& ElementAccessOf(const Operator* op) {
          op->opcode() == IrOpcode::kStoreElement);
   return OpParameter<ElementAccess>(op);
 }
-
-
-// Specialization for static parameters of type {FieldAccess}.
-template <>
-struct StaticParameterTraits<FieldAccess> {
-  static OStream& PrintTo(OStream& os, const FieldAccess& val) {
-    return os << val.offset;
-  }
-  static int HashCode(const FieldAccess& val) {
-    return (val.offset < 16) | (val.machine_type & 0xffff);
-  }
-  static bool Equals(const FieldAccess& lhs, const FieldAccess& rhs) {
-    return lhs.base_is_tagged == rhs.base_is_tagged &&
-           lhs.offset == rhs.offset && lhs.machine_type == rhs.machine_type &&
-           lhs.type->Is(rhs.type);
-  }
-};
-
-
-// Specialization for static parameters of type {ElementAccess}.
-template <>
-struct StaticParameterTraits<ElementAccess> {
-  static OStream& PrintTo(OStream& os, const ElementAccess& access) {
-    return os << access;
-  }
-  static int HashCode(const ElementAccess& access) {
-    return (access.header_size < 16) | (access.machine_type & 0xffff);
-  }
-  static bool Equals(const ElementAccess& lhs, const ElementAccess& rhs) {
-    return lhs.base_is_tagged == rhs.base_is_tagged &&
-           lhs.header_size == rhs.header_size &&
-           lhs.machine_type == rhs.machine_type && lhs.type->Is(rhs.type);
-  }
-};
 
 
 #define PURE_OP_LIST(V)                                \
@@ -119,7 +135,9 @@ struct StaticParameterTraits<ElementAccess> {
   V(ChangeUint32ToTagged, Operator::kNoProperties, 1)  \
   V(ChangeFloat64ToTagged, Operator::kNoProperties, 1) \
   V(ChangeBoolToBit, Operator::kNoProperties, 1)       \
-  V(ChangeBitToBool, Operator::kNoProperties, 1)
+  V(ChangeBitToBool, Operator::kNoProperties, 1)       \
+  V(ObjectIsSmi, Operator::kNoProperties, 1)           \
+  V(ObjectIsNonNegativeSmi, Operator::kNoProperties, 1)
 
 
 #define ACCESS_OP_LIST(V)                                 \

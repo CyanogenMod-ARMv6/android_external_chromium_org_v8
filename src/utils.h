@@ -61,7 +61,6 @@ inline int WhichPowerOf2(uint32_t x) {
   }
   DCHECK_EQ(1 << bits, original_x);
   return bits;
-  return 0;
 }
 
 
@@ -157,7 +156,7 @@ T Abs(T a) {
 
 // Floor(-0.0) == 0.0
 inline double Floor(double x) {
-#ifdef _MSC_VER
+#if V8_CC_MSVC
   if (x == 0) return x;  // Fix for issue 3477.
 #endif
   return std::floor(x);
@@ -952,6 +951,33 @@ class TypeFeedbackId {
 };
 
 
+template <int dummy_parameter>
+class VectorSlot {
+ public:
+  explicit VectorSlot(int id) : id_(id) {}
+  int ToInt() const { return id_; }
+
+  static VectorSlot Invalid() { return VectorSlot(kInvalidSlot); }
+  bool IsInvalid() const { return id_ == kInvalidSlot; }
+
+  VectorSlot next() const {
+    DCHECK(id_ != kInvalidSlot);
+    return VectorSlot(id_ + 1);
+  }
+
+  bool operator==(const VectorSlot& other) const { return id_ == other.id_; }
+
+ private:
+  static const int kInvalidSlot = -1;
+
+  int id_;
+};
+
+
+typedef VectorSlot<0> FeedbackVectorSlot;
+typedef VectorSlot<1> FeedbackVectorICSlot;
+
+
 class BailoutId {
  public:
   explicit BailoutId(int id) : id_(id) { }
@@ -966,6 +992,8 @@ class BailoutId {
   bool IsNone() const { return id_ == kNoneId; }
   bool operator==(const BailoutId& other) const { return id_ == other.id_; }
   bool operator!=(const BailoutId& other) const { return id_ != other.id_; }
+  friend size_t hash_value(BailoutId);
+  friend std::ostream& operator<<(std::ostream&, BailoutId);
 
  private:
   static const int kNoneId = -1;

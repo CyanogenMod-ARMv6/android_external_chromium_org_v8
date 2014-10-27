@@ -21,7 +21,6 @@ namespace internal {
   ICU(CallIC_Customization_Miss)       \
   ICU(StoreIC_Miss)                    \
   ICU(StoreIC_Slow)                    \
-  ICU(SharedStoreIC_ExtendStorage)     \
   ICU(KeyedStoreIC_Miss)               \
   ICU(KeyedStoreIC_Slow)               \
   /* Utilities for IC stubs. */        \
@@ -86,6 +85,10 @@ class IC {
   // Clear the inline cache to initial state.
   static void Clear(Isolate* isolate, Address address,
                     ConstantPoolArray* constant_pool);
+
+  // Clear the vector-based inline cache to initial state.
+  static void Clear(Isolate* isolate, Code::Kind kind, Code* host,
+                    TypeFeedbackVector* vector, FeedbackVectorICSlot slot);
 
 #ifdef DEBUG
   bool IsLoadStub() const {
@@ -224,7 +227,6 @@ class IC {
     return target_maps_.length() > 0 ? *target_maps_.at(0) : NULL;
   }
 
- protected:
   inline void UpdateTarget();
 
  private:
@@ -296,26 +298,35 @@ class CallIC : public IC {
   explicit CallIC(Isolate* isolate) : IC(EXTRA_CALL_FRAME, isolate) {}
 
   void PatchMegamorphic(Handle<Object> function,
-                        Handle<TypeFeedbackVector> vector, Handle<Smi> slot);
+                        Handle<TypeFeedbackVector> vector,
+                        FeedbackVectorICSlot slot);
 
   void HandleMiss(Handle<Object> receiver, Handle<Object> function,
-                  Handle<TypeFeedbackVector> vector, Handle<Smi> slot);
+                  Handle<TypeFeedbackVector> vector, FeedbackVectorICSlot slot);
 
   // Returns true if a custom handler was installed.
   bool DoCustomHandler(Handle<Object> receiver, Handle<Object> function,
-                       Handle<TypeFeedbackVector> vector, Handle<Smi> slot,
-                       const CallICState& state);
+                       Handle<TypeFeedbackVector> vector,
+                       FeedbackVectorICSlot slot, const CallICState& state);
 
   // Code generator routines.
   static Handle<Code> initialize_stub(Isolate* isolate, int argc,
                                       CallICState::CallType call_type);
 
-  static void Clear(Isolate* isolate, Address address, Code* target,
-                    ConstantPoolArray* constant_pool);
+  static void Clear(Isolate* isolate, Code* host, TypeFeedbackVector* vector,
+                    FeedbackVectorICSlot slot);
 
  private:
-  inline IC::State FeedbackToState(Handle<TypeFeedbackVector> vector,
-                                   Handle<Smi> slot) const;
+  static inline IC::State FeedbackToState(Isolate* isolate,
+                                          TypeFeedbackVector* vector,
+                                          FeedbackVectorICSlot slot);
+
+  inline Code* get_host();
+
+  // As a vector-based IC, type feedback must be updated differently.
+  static void OnTypeFeedbackChanged(Isolate* isolate, Code* host,
+                                    TypeFeedbackVector* vector, State old_state,
+                                    State new_state);
 };
 
 
@@ -355,6 +366,8 @@ class LoadIC : public IC {
 
   static Handle<Code> initialize_stub(Isolate* isolate,
                                       ExtraICState extra_state);
+  static Handle<Code> initialize_stub_in_optimized_code(
+      Isolate* isolate, ExtraICState extra_state);
 
   MUST_USE_RESULT MaybeHandle<Object> Load(Handle<Object> object,
                                            Handle<Name> name);
@@ -413,7 +426,6 @@ class KeyedLoadIC : public LoadIC {
     GenerateMiss(masm);
   }
   static void GenerateGeneric(MacroAssembler* masm);
-  static void GenerateString(MacroAssembler* masm);
 
   // Bit mask to be tested against bit field for the cases when
   // generic stub should go into slow case.
@@ -422,20 +434,20 @@ class KeyedLoadIC : public LoadIC {
   static const int kSlowCaseBitFieldMask =
       (1 << Map::kIsAccessCheckNeeded) | (1 << Map::kHasIndexedInterceptor);
 
+  static Handle<Code> initialize_stub(Isolate* isolate);
+  static Handle<Code> initialize_stub_in_optimized_code(Isolate* isolate);
   static Handle<Code> generic_stub(Isolate* isolate);
   static Handle<Code> pre_monomorphic_stub(Isolate* isolate);
 
  protected:
-  Handle<Code> LoadElementStub(Handle<JSObject> receiver);
+  // receiver is HeapObject because it could be a String or a JSObject
+  Handle<Code> LoadElementStub(Handle<HeapObject> receiver);
   virtual Handle<Code> pre_monomorphic_stub() const {
     return pre_monomorphic_stub(isolate());
   }
 
  private:
   Handle<Code> generic_stub() const { return generic_stub(isolate()); }
-  Handle<Code> string_stub() {
-    return isolate()->builtins()->KeyedLoadIC_String();
-  }
 
   static void Clear(Isolate* isolate, Address address, Code* target,
                     ConstantPoolArray* constant_pool);
@@ -527,6 +539,12 @@ enum KeyedStoreCheckMap { kDontCheckMap, kCheckMap };
 enum KeyedStoreIncrementLength { kDontIncrementLength, kIncrementLength };
 
 
+enum KeyedStoreStubCacheRequirement {
+  kCallRuntimeOnMissingHandler,
+  kMissOnMissingHandler
+};
+
+
 class KeyedStoreIC : public StoreIC {
  public:
   // ExtraICState bits (building on IC)
@@ -534,15 +552,22 @@ class KeyedStoreIC : public StoreIC {
   class ExtraICStateKeyedAccessStoreMode
       : public BitField<KeyedAccessStoreMode, 2, 4> {};  // NOLINT
 
+  class IcCheckTypeField : public BitField<IcCheckType, 6, 1> {};
+
   static ExtraICState ComputeExtraICState(StrictMode flag,
                                           KeyedAccessStoreMode mode) {
     return StrictModeState::encode(flag) |
-           ExtraICStateKeyedAccessStoreMode::encode(mode);
+           ExtraICStateKeyedAccessStoreMode::encode(mode) |
+           IcCheckTypeField::encode(ELEMENT);
   }
 
   static KeyedAccessStoreMode GetKeyedAccessStoreMode(
       ExtraICState extra_state) {
     return ExtraICStateKeyedAccessStoreMode::decode(extra_state);
+  }
+
+  static IcCheckType GetKeyType(ExtraICState extra_state) {
+    return IcCheckTypeField::decode(extra_state);
   }
 
   KeyedStoreIC(FrameDepth depth, Isolate* isolate) : StoreIC(depth, isolate) {
@@ -560,7 +585,9 @@ class KeyedStoreIC : public StoreIC {
   }
   static void GenerateMiss(MacroAssembler* masm);
   static void GenerateSlow(MacroAssembler* masm);
-  static void GenerateGeneric(MacroAssembler* masm, StrictMode strict_mode);
+  static void GenerateGeneric(
+      MacroAssembler* masm, StrictMode strict_mode,
+      KeyedStoreStubCacheRequirement handler_requirement);
   static void GenerateSloppyArguments(MacroAssembler* masm);
 
  protected:
@@ -681,8 +708,7 @@ DECLARE_RUNTIME_FUNCTION(BinaryOpIC_Miss);
 DECLARE_RUNTIME_FUNCTION(BinaryOpIC_MissWithAllocationSite);
 DECLARE_RUNTIME_FUNCTION(CompareNilIC_Miss);
 DECLARE_RUNTIME_FUNCTION(ToBooleanIC_Miss);
-DECLARE_RUNTIME_FUNCTION(VectorLoadIC_MissFromStubFailure);
-DECLARE_RUNTIME_FUNCTION(VectorKeyedLoadIC_MissFromStubFailure);
+DECLARE_RUNTIME_FUNCTION(LoadIC_MissFromStubFailure);
 
 // Support functions for callbacks handlers.
 DECLARE_RUNTIME_FUNCTION(StoreCallbackProperty);

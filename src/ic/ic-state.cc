@@ -10,9 +10,17 @@
 namespace v8 {
 namespace internal {
 
+// static
 void ICUtility::Clear(Isolate* isolate, Address address,
                       ConstantPoolArray* constant_pool) {
   IC::Clear(isolate, address, constant_pool);
+}
+
+
+// static
+void ICUtility::Clear(Isolate* isolate, Code::Kind kind, Code* host,
+                      TypeFeedbackVector* vector, FeedbackVectorICSlot slot) {
+  IC::Clear(isolate, kind, host, vector, slot);
 }
 
 
@@ -28,7 +36,7 @@ ExtraICState CallICState::GetExtraICState() const {
 }
 
 
-OStream& operator<<(OStream& os, const CallICState& s) {
+std::ostream& operator<<(std::ostream& os, const CallICState& s) {
   return os << "(args(" << s.arg_count() << "), "
             << (s.call_type() == CallICState::METHOD ? "METHOD" : "FUNCTION")
             << ", ";
@@ -308,7 +316,7 @@ Type* BinaryOpICState::GetResultType(Zone* zone) const {
 }
 
 
-OStream& operator<<(OStream& os, const BinaryOpICState& s) {
+std::ostream& operator<<(std::ostream& os, const BinaryOpICState& s) {
   os << "(" << Token::Name(s.op_);
   if (s.mode_ == OVERWRITE_LEFT)
     os << "_ReuseLeft";

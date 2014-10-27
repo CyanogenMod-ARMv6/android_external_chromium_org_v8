@@ -18,9 +18,13 @@ namespace compiler {
 
 // Clients of this interface shouldn't depend on lots of compiler internals.
 class Graph;
+class InstructionSequence;
+class Linkage;
+class PipelineStatistics;
+class RegisterAllocator;
 class Schedule;
 class SourcePositionTable;
-class Linkage;
+class ZonePool;
 
 class Pipeline {
  public:
@@ -47,9 +51,12 @@ class Pipeline {
   Isolate* isolate() { return info_->isolate(); }
   Zone* zone() { return info_->zone(); }
 
-  Schedule* ComputeSchedule(Graph* graph);
-  void VerifyAndPrintGraph(Graph* graph, const char* phase);
-  Handle<Code> GenerateCode(Linkage* linkage, Graph* graph, Schedule* schedule,
+  Schedule* ComputeSchedule(ZonePool* zone_pool, Graph* graph);
+  void VerifyAndPrintGraph(Graph* graph, const char* phase,
+                           bool untyped = false);
+  Handle<Code> GenerateCode(PipelineStatistics* pipeline_statistics,
+                            ZonePool* zone_pool, Linkage* linkage, Graph* graph,
+                            Schedule* schedule,
                             SourcePositionTable* source_positions);
 };
 }

@@ -987,12 +987,12 @@ BUILTIN(ArrayConcat) {
   Handle<FixedArrayBase> storage(result_array->elements(), isolate);
   ElementsAccessor* accessor = ElementsAccessor::ForKind(elements_kind);
   for (int i = 0; i < n_arguments; i++) {
-    // TODO(ishell): It is crucial to keep |array| as a raw pointer to avoid
-    // performance degradation. Revisit this later.
+    // It is crucial to keep |array| in a raw pointer form to avoid performance
+    // degradation.
     JSArray* array = JSArray::cast(args[i]);
     int len = Smi::cast(array->length())->value();
-    ElementsKind from_kind = array->GetElementsKind();
     if (len > 0) {
+      ElementsKind from_kind = array->GetElementsKind();
       accessor->CopyElements(array, 0, from_kind, storage, j, len);
       j += len;
     }
@@ -1279,11 +1279,6 @@ static void Generate_KeyedLoadIC_Generic(MacroAssembler* masm) {
 }
 
 
-static void Generate_KeyedLoadIC_String(MacroAssembler* masm) {
-  KeyedLoadIC::GenerateString(masm);
-}
-
-
 static void Generate_KeyedLoadIC_PreMonomorphic(MacroAssembler* masm) {
   KeyedLoadIC::GeneratePreMonomorphic(masm);
 }
@@ -1314,13 +1309,23 @@ static void Generate_StoreIC_Setter_ForDeopt(MacroAssembler* masm) {
 }
 
 
+static void Generate_KeyedStoreIC_Megamorphic(MacroAssembler* masm) {
+  KeyedStoreIC::GenerateGeneric(masm, SLOPPY, kMissOnMissingHandler);
+}
+
+
+static void Generate_KeyedStoreIC_Megamorphic_Strict(MacroAssembler* masm) {
+  KeyedStoreIC::GenerateGeneric(masm, STRICT, kMissOnMissingHandler);
+}
+
+
 static void Generate_KeyedStoreIC_Generic(MacroAssembler* masm) {
-  KeyedStoreIC::GenerateGeneric(masm, SLOPPY);
+  KeyedStoreIC::GenerateGeneric(masm, SLOPPY, kCallRuntimeOnMissingHandler);
 }
 
 
 static void Generate_KeyedStoreIC_Generic_Strict(MacroAssembler* masm) {
-  KeyedStoreIC::GenerateGeneric(masm, STRICT);
+  KeyedStoreIC::GenerateGeneric(masm, STRICT, kCallRuntimeOnMissingHandler);
 }
 
 
@@ -1562,14 +1567,14 @@ void Builtins::SetUp(Isolate* isolate, bool create_heap_objects) {
       // Move the code into the object heap.
       CodeDesc desc;
       masm.GetCode(&desc);
-      Code::Flags flags =  functions[i].flags;
+      Code::Flags flags = functions[i].flags;
       Handle<Code> code =
           isolate->factory()->NewCode(desc, flags, masm.CodeObject());
       // Log the event and add the code to the builtins array.
       PROFILE(isolate,
               CodeCreateEvent(Logger::BUILTIN_TAG, *code, functions[i].s_name));
       builtins_[i] = *code;
-      if (code->kind() == Code::BUILTIN) code->set_builtin_index(i);
+      code->set_builtin_index(i);
 #ifdef ENABLE_DISASSEMBLER
       if (FLAG_print_builtin_code) {
         CodeTracer::Scope trace_scope(isolate->GetCodeTracer());

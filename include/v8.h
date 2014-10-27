@@ -15,7 +15,11 @@
 #ifndef V8_H_
 #define V8_H_
 
-#include "v8stdint.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+
+#include "v8config.h"
 
 // We reserve the V8_* prefix for macros defined in V8 public API and
 // assume there are no name conflicts with the embedder's code.
@@ -85,6 +89,7 @@ class ObjectOperationDescriptor;
 class ObjectTemplate;
 class Platform;
 class Primitive;
+class Promise;
 class RawOperationDescriptor;
 class Script;
 class Signature;
@@ -695,9 +700,6 @@ template <class T, class M> class Persistent : public PersistentBase<T> {
   template <class S> V8_INLINE Persistent<S>& As() { // NOLINT
     return Persistent<S>::Cast(*this);
   }
-
-  // This will be removed.
-  V8_INLINE T* ClearAndLeak();
 
  private:
   friend class Isolate;
@@ -1415,6 +1417,27 @@ class V8_EXPORT StackFrame {
 };
 
 
+// A StateTag represents a possible state of the VM.
+enum StateTag { JS, GC, COMPILER, OTHER, EXTERNAL, IDLE };
+
+
+// A RegisterState represents the current state of registers used
+// by the sampling profiler API.
+struct RegisterState {
+  RegisterState() : pc(NULL), sp(NULL), fp(NULL) {}
+  void* pc;  // Instruction pointer.
+  void* sp;  // Stack pointer.
+  void* fp;  // Frame pointer.
+};
+
+
+// The output structure filled up by GetStackSample API function.
+struct SampleInfo {
+  size_t frames_count;
+  StateTag vm_state;
+};
+
+
 /**
  * A JSON Parser.
  */
@@ -1559,6 +1582,18 @@ class V8_EXPORT Value : public Data {
    * Returns true if this value is a RegExp.
    */
   bool IsRegExp() const;
+
+  /**
+   * Returns true if this value is a Generator function.
+   * This is an experimental feature.
+   */
+  bool IsGeneratorFunction() const;
+
+  /**
+   * Returns true if this value is a Generator object (iterator).
+   * This is an experimental feature.
+   */
+  bool IsGeneratorObject() const;
 
   /**
    * Returns true if this value is a Promise.
@@ -1742,7 +1777,6 @@ class V8_EXPORT String : public Name {
   enum Encoding {
     UNKNOWN_ENCODING = 0x1,
     TWO_BYTE_ENCODING = 0x0,
-    ASCII_ENCODING = 0x4,  // TODO(yangguo): deprecate this.
     ONE_BYTE_ENCODING = 0x4
   };
   /**
@@ -1798,7 +1832,6 @@ class V8_EXPORT String : public Name {
     NO_OPTIONS = 0,
     HINT_MANY_WRITES_EXPECTED = 1,
     NO_NULL_TERMINATION = 2,
-    PRESERVE_ASCII_NULL = 4,  // TODO(yangguo): deprecate this.
     PRESERVE_ONE_BYTE_NULL = 4,
     // Used by WriteUtf8 to replace orphan surrogate code units with the
     // unicode replacement character. Needs to be set to guarantee valid UTF-8
@@ -1836,9 +1869,6 @@ class V8_EXPORT String : public Name {
    * Returns true if the string is both external and one-byte.
    */
   bool IsExternalOneByte() const;
-
-  // TODO(yangguo): deprecate this.
-  bool IsExternalAscii() const { return IsExternalOneByte(); }
 
   class V8_EXPORT ExternalStringResourceBase {  // NOLINT
    public:
@@ -1918,8 +1948,6 @@ class V8_EXPORT String : public Name {
     ExternalOneByteStringResource() {}
   };
 
-  typedef ExternalOneByteStringResource ExternalAsciiStringResource;
-
   /**
    * If the string is an external string, return the ExternalStringResourceBase
    * regardless of the encoding, otherwise return NULL.  The encoding of the
@@ -1939,11 +1967,6 @@ class V8_EXPORT String : public Name {
    * Returns NULL if IsExternalOneByte() doesn't return true.
    */
   const ExternalOneByteStringResource* GetExternalOneByteStringResource() const;
-
-  // TODO(yangguo): deprecate this.
-  const ExternalAsciiStringResource* GetExternalAsciiStringResource() const {
-    return GetExternalOneByteStringResource();
-  }
 
   V8_INLINE static String* Cast(v8::Value* obj);
 
@@ -2107,6 +2130,7 @@ class V8_EXPORT Symbol : public Name {
   // Well-known symbols
   static Local<Symbol> GetIterator(Isolate* isolate);
   static Local<Symbol> GetUnscopables(Isolate* isolate);
+  static Local<Symbol> GetToStringTag(Isolate* isolate);
 
   V8_INLINE static Symbol* Cast(v8::Value* obj);
 
@@ -2484,15 +2508,6 @@ class V8_EXPORT Object : public Value {
   bool DeleteHiddenValue(Handle<String> key);
 
   /**
-   * Returns true if this is an instance of an api function (one
-   * created from a function created from a function template) and has
-   * been modified since it was created.  Note that this method is
-   * conservative and may return true for objects that haven't actually
-   * been modified.
-   */
-  bool IsDirty();
-
-  /**
    * Clone this object with a fast but shallow copy.  Values will point
    * to the same values as the original object.
    */
@@ -2551,6 +2566,11 @@ class V8_EXPORT Object : public Value {
    * Note: This method behaves like the Function::NewInstance method.
    */
   Local<Value> CallAsConstructor(int argc, Handle<Value> argv[]);
+
+  /**
+   * Return the isolate to which the Object belongs to.
+   */
+  Isolate* GetIsolate();
 
   static Local<Object> New(Isolate* isolate);
 
@@ -2817,6 +2837,12 @@ class V8_EXPORT Promise : public Object {
   Local<Promise> Chain(Handle<Function> handler);
   Local<Promise> Catch(Handle<Function> handler);
   Local<Promise> Then(Handle<Function> handler);
+
+  /**
+   * Returns true if the promise has at least one derived promise, and
+   * therefore resolve/reject handlers (including default handler).
+   */
+  bool HasHandler();
 
   V8_INLINE static Promise* Cast(Value* obj);
 
@@ -4122,6 +4148,8 @@ class V8_EXPORT Exception {
   static Local<Value> SyntaxError(Handle<String> message);
   static Local<Value> TypeError(Handle<String> message);
   static Local<Value> Error(Handle<String> message);
+
+  static Local<StackTrace> GetStackTrace(Handle<Value> exception);
 };
 
 
@@ -4162,6 +4190,35 @@ typedef void (*MemoryAllocationCallback)(ObjectSpace space,
 
 // --- Leave Script Callback ---
 typedef void (*CallCompletedCallback)();
+
+// --- Promise Reject Callback ---
+enum PromiseRejectEvent {
+  kPromiseRejectWithNoHandler = 0,
+  kPromiseHandlerAddedAfterReject = 1
+};
+
+class PromiseRejectMessage {
+ public:
+  PromiseRejectMessage(Handle<Promise> promise, PromiseRejectEvent event,
+                       Handle<Value> value, Handle<StackTrace> stack_trace)
+      : promise_(promise),
+        event_(event),
+        value_(value),
+        stack_trace_(stack_trace) {}
+
+  V8_INLINE Handle<Promise> GetPromise() const { return promise_; }
+  V8_INLINE PromiseRejectEvent GetEvent() const { return event_; }
+  V8_INLINE Handle<Value> GetValue() const { return value_; }
+  V8_INLINE Handle<StackTrace> GetStackTrace() const { return stack_trace_; }
+
+ private:
+  Handle<Promise> promise_;
+  PromiseRejectEvent event_;
+  Handle<Value> value_;
+  Handle<StackTrace> stack_trace_;
+};
+
+typedef void (*PromiseRejectCallback)(PromiseRejectMessage message);
 
 // --- Microtask Callback ---
 typedef void (*MicrotaskCallback)(void* data);
@@ -4473,6 +4530,7 @@ class V8_EXPORT Isolate {
    */
   enum UseCounterFeature {
     kUseAsm = 0,
+    kBreakIterator = 1,
     kUseCounterFeatureCount  // This enum value must be last.
   };
 
@@ -4546,6 +4604,21 @@ class V8_EXPORT Isolate {
    * Get statistics about the heap memory usage.
    */
   void GetHeapStatistics(HeapStatistics* heap_statistics);
+
+  /**
+   * Get a call stack sample from the isolate.
+   * \param state Execution state.
+   * \param frames Caller allocated buffer to store stack frames.
+   * \param frames_limit Maximum number of frames to capture. The buffer must
+   *                     be large enough to hold the number of frames.
+   * \param sample_info The sample info is filled up by the function
+   *                    provides number of actual captured stack frames and
+   *                    the current VM state.
+   * \note GetStackSample should only be called when the JS thread is paused or
+   *       interrupted. Otherwise the behavior is undefined.
+   */
+  void GetStackSample(const RegisterState& state, void** frames,
+                      size_t frames_limit, SampleInfo* sample_info);
 
   /**
    * Adjusts the amount of registered external memory. Used to give V8 an
@@ -4723,6 +4796,13 @@ class V8_EXPORT Isolate {
    */
   void RemoveCallCompletedCallback(CallCompletedCallback callback);
 
+
+  /**
+   * Set callback to notify about promise reject with no handler, or
+   * revocation of such a previous notification once the handler is added.
+   */
+  void SetPromiseRejectCallback(PromiseRejectCallback callback);
+
   /**
    * Experimental: Runs the Microtask Work Queue until empty
    * Any exceptions thrown by microtask callbacks are swallowed.
@@ -4834,6 +4914,21 @@ class V8_EXPORT Isolate {
    *     limit separately for each thread.
    */
   void SetStackLimit(uintptr_t stack_limit);
+
+  /**
+   * Returns a memory range that can potentially contain jitted code.
+   *
+   * On Win64, embedders are advised to install function table callbacks for
+   * these ranges, as default SEH won't be able to unwind through jitted code.
+   *
+   * The first page of the code range is reserved for the embedder and is
+   * committed, writable, and executable.
+   *
+   * Might be empty on other platforms.
+   *
+   * https://code.google.com/p/v8/issues/detail?id=3598
+   */
+  void GetCodeRange(void** start, size_t* length_in_bytes);
 
  private:
   template<class K, class V, class Traits> friend class PersistentValueMap;
@@ -5183,6 +5278,13 @@ class V8_EXPORT V8 {
    * that have class_ids.
    */
   static void VisitHandlesWithClassIds(PersistentHandleVisitor* visitor);
+
+  /**
+   * Iterates through all the persistent handles in isolate's heap that have
+   * class_ids.
+   */
+  static void VisitHandlesWithClassIds(
+      Isolate* isolate, PersistentHandleVisitor* visitor);
 
   /**
    * Iterates through all the persistent handles in the current isolate's heap
@@ -5692,8 +5794,6 @@ class V8_EXPORT Locker {
   bool top_level_;
   internal::Isolate* isolate_;
 
-  static bool active_;
-
   // Disallow copying and assigning.
   Locker(const Locker&);
   void operator=(const Locker&);
@@ -5802,7 +5902,7 @@ class Internals {
   static const int kJSObjectHeaderSize = 3 * kApiPointerSize;
   static const int kFixedArrayHeaderSize = 2 * kApiPointerSize;
   static const int kContextHeaderSize = 2 * kApiPointerSize;
-  static const int kContextEmbedderDataIndex = 95;
+  static const int kContextEmbedderDataIndex = 76;
   static const int kFullStringRepresentationMask = 0x07;
   static const int kStringEncodingMask = 0x4;
   static const int kExternalTwoByteRepresentationTag = 0x02;
@@ -5820,7 +5920,7 @@ class Internals {
   static const int kNullValueRootIndex = 7;
   static const int kTrueValueRootIndex = 8;
   static const int kFalseValueRootIndex = 9;
-  static const int kEmptyStringRootIndex = 164;
+  static const int kEmptyStringRootIndex = 154;
 
   // The external allocation limit should be below 256 MB on all architectures
   // to avoid that resource-constrained embedders run low on memory.
@@ -5835,7 +5935,7 @@ class Internals {
   static const int kNodeIsIndependentShift = 4;
   static const int kNodeIsPartiallyDependentShift = 5;
 
-  static const int kJSObjectType = 0xbc;
+  static const int kJSObjectType = 0xbd;
   static const int kFirstNonstringType = 0x80;
   static const int kOddballType = 0x83;
   static const int kForeignType = 0x88;
@@ -6130,15 +6230,6 @@ void PersistentBase<T>::MarkPartiallyDependent() {
   I::UpdateNodeFlag(reinterpret_cast<internal::Object**>(this->val_),
                     true,
                     I::kNodeIsPartiallyDependentShift);
-}
-
-
-template <class T, class M>
-T* Persistent<T, M>::ClearAndLeak() {
-  T* old;
-  old = this->val_;
-  this->val_ = NULL;
-  return old;
 }
 
 

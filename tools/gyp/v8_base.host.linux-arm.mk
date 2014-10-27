@@ -33,26 +33,32 @@ LOCAL_SRC_FILES := \
 	v8/src/assembler.cc \
 	v8/src/assert-scope.cc \
 	v8/src/ast-value-factory.cc \
+	v8/src/ast-numbering.cc \
 	v8/src/ast.cc \
 	v8/src/background-parsing-task.cc \
 	v8/src/bailout-reason.cc \
+	v8/src/basic-block-profiler.cc \
 	v8/src/bignum-dtoa.cc \
 	v8/src/bignum.cc \
 	v8/src/bootstrapper.cc \
 	v8/src/builtins.cc \
 	v8/src/cached-powers.cc \
+	v8/src/char-predicates.cc \
 	v8/src/checks.cc \
 	v8/src/code-factory.cc \
 	v8/src/code-stubs.cc \
 	v8/src/code-stubs-hydrogen.cc \
 	v8/src/codegen.cc \
 	v8/src/compilation-cache.cc \
+	v8/src/compilation-statistics.cc \
 	v8/src/compiler/access-builder.cc \
 	v8/src/compiler/ast-graph-builder.cc \
+	v8/src/compiler/basic-block-instrumentor.cc \
 	v8/src/compiler/change-lowering.cc \
 	v8/src/compiler/code-generator.cc \
 	v8/src/compiler/common-operator.cc \
 	v8/src/compiler/control-builders.cc \
+	v8/src/compiler/control-reducer.cc \
 	v8/src/compiler/gap-resolver.cc \
 	v8/src/compiler/graph-builder.cc \
 	v8/src/compiler/graph-reducer.cc \
@@ -66,15 +72,19 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/js-generic-lowering.cc \
 	v8/src/compiler/js-graph.cc \
 	v8/src/compiler/js-inlining.cc \
+	v8/src/compiler/js-intrinsic-builder.cc \
+	v8/src/compiler/js-operator.cc \
 	v8/src/compiler/js-typed-lowering.cc \
 	v8/src/compiler/linkage.cc \
 	v8/src/compiler/machine-operator-reducer.cc \
 	v8/src/compiler/machine-operator.cc \
 	v8/src/compiler/machine-type.cc \
 	v8/src/compiler/node-cache.cc \
+	v8/src/compiler/node-matchers.cc \
 	v8/src/compiler/node.cc \
 	v8/src/compiler/operator.cc \
 	v8/src/compiler/pipeline.cc \
+	v8/src/compiler/pipeline-statistics.cc \
 	v8/src/compiler/raw-machine-assembler.cc \
 	v8/src/compiler/register-allocator.cc \
 	v8/src/compiler/schedule.cc \
@@ -86,6 +96,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/typer.cc \
 	v8/src/compiler/value-numbering-reducer.cc \
 	v8/src/compiler/verifier.cc \
+	v8/src/compiler/zone-pool.cc \
 	v8/src/compiler.cc \
 	v8/src/contexts.cc \
 	v8/src/conversions.cc \
@@ -127,7 +138,6 @@ LOCAL_SRC_FILES := \
 	v8/src/heap/objects-visiting.cc \
 	v8/src/heap/spaces.cc \
 	v8/src/heap/store-buffer.cc \
-	v8/src/heap/sweeper-thread.cc \
 	v8/src/hydrogen-bce.cc \
 	v8/src/hydrogen-bch.cc \
 	v8/src/hydrogen-canonicalize.cc \
@@ -192,7 +202,33 @@ LOCAL_SRC_FILES := \
 	v8/src/regexp-stack.cc \
 	v8/src/rewriter.cc \
 	v8/src/runtime-profiler.cc \
-	v8/src/runtime.cc \
+	v8/src/runtime/runtime-api.cc \
+	v8/src/runtime/runtime-array.cc \
+	v8/src/runtime/runtime-classes.cc \
+	v8/src/runtime/runtime-collections.cc \
+	v8/src/runtime/runtime-compiler.cc \
+	v8/src/runtime/runtime-date.cc \
+	v8/src/runtime/runtime-debug.cc \
+	v8/src/runtime/runtime-function.cc \
+	v8/src/runtime/runtime-generator.cc \
+	v8/src/runtime/runtime-i18n.cc \
+	v8/src/runtime/runtime-internal.cc \
+	v8/src/runtime/runtime-json.cc \
+	v8/src/runtime/runtime-literals.cc \
+	v8/src/runtime/runtime-liveedit.cc \
+	v8/src/runtime/runtime-maths.cc \
+	v8/src/runtime/runtime-numbers.cc \
+	v8/src/runtime/runtime-object.cc \
+	v8/src/runtime/runtime-observe.cc \
+	v8/src/runtime/runtime-proxy.cc \
+	v8/src/runtime/runtime-regexp.cc \
+	v8/src/runtime/runtime-scopes.cc \
+	v8/src/runtime/runtime-strings.cc \
+	v8/src/runtime/runtime-symbol.cc \
+	v8/src/runtime/runtime-test.cc \
+	v8/src/runtime/runtime-typedarray.cc \
+	v8/src/runtime/runtime-uri.cc \
+	v8/src/runtime/runtime.cc \
 	v8/src/safepoint-table.cc \
 	v8/src/sampler.cc \
 	v8/src/scanner-character-streams.cc \
@@ -212,13 +248,14 @@ LOCAL_SRC_FILES := \
 	v8/src/types.cc \
 	v8/src/typing.cc \
 	v8/src/unicode.cc \
+	v8/src/unicode-decoder.cc \
 	v8/src/utils.cc \
 	v8/src/v8.cc \
 	v8/src/v8threads.cc \
 	v8/src/variables.cc \
 	v8/src/version.cc \
 	v8/src/zone.cc \
-	v8/third_party/fdlibm/fdlibm.cc \
+	v8/src/third_party/fdlibm/fdlibm.cc \
 	v8/src/arm/assembler-arm.cc \
 	v8/src/arm/builtins-arm.cc \
 	v8/src/arm/code-stubs-arm.cc \
@@ -293,12 +330,6 @@ MY_DEFS_Debug := \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
-	'-DDATA_REDUCTION_FALLBACK_HOST="http://compress.googlezip.net:80/"' \
-	'-DDATA_REDUCTION_DEV_HOST="https://proxy-dev.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_DEV_FALLBACK_HOST="http://proxy-dev.googlezip.net:80/"' \
-	'-DSPDY_PROXY_AUTH_ORIGIN="https://proxy.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_PROXY_PROBE_URL="http://check.googlezip.net/connect"' \
-	'-DDATA_REDUCTION_PROXY_WARMUP_URL="http://www.gstatic.com/generate_204"' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
 	'-DV8_TARGET_ARCH_ARM' \
@@ -386,12 +417,6 @@ MY_DEFS_Release := \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
-	'-DDATA_REDUCTION_FALLBACK_HOST="http://compress.googlezip.net:80/"' \
-	'-DDATA_REDUCTION_DEV_HOST="https://proxy-dev.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_DEV_FALLBACK_HOST="http://proxy-dev.googlezip.net:80/"' \
-	'-DSPDY_PROXY_AUTH_ORIGIN="https://proxy.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_PROXY_PROBE_URL="http://check.googlezip.net/connect"' \
-	'-DDATA_REDUCTION_PROXY_WARMUP_URL="http://www.gstatic.com/generate_204"' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
 	'-DV8_TARGET_ARCH_ARM' \
@@ -434,6 +459,9 @@ LOCAL_C_INCLUDES := $(GYP_COPIED_SOURCE_ORIGIN_DIRS) $(LOCAL_C_INCLUDES_$(GYP_CO
 LOCAL_CPPFLAGS := $(LOCAL_CPPFLAGS_$(GYP_CONFIGURATION))
 LOCAL_ASFLAGS := $(LOCAL_CFLAGS)
 ### Rules for final target.
+### Set directly by aosp_build_settings.
+LOCAL_CLANG := true
+
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules
 gyp_all_modules: v8_tools_gyp_v8_base_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp

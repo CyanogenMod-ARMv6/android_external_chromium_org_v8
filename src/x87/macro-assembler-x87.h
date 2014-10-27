@@ -6,6 +6,7 @@
 #define V8_X87_MACRO_ASSEMBLER_X87_H_
 
 #include "src/assembler.h"
+#include "src/bailout-reason.h"
 #include "src/frames.h"
 #include "src/globals.h"
 
@@ -456,7 +457,10 @@ class MacroAssembler: public Assembler {
     j(not_carry, is_smi);
   }
 
-  void LoadUint32NoSSE2(Register src);
+  void LoadUint32NoSSE2(Register src) {
+    LoadUint32NoSSE2(Operand(src));
+  }
+  void LoadUint32NoSSE2(const Operand& src);
 
   // Jump the register contains a smi.
   inline void JumpIfSmi(Register value,
@@ -902,6 +906,7 @@ class MacroAssembler: public Assembler {
 
   // Activation support.
   void EnterFrame(StackFrame::Type type);
+  void EnterFrame(StackFrame::Type type, bool load_constant_pool_pointer_reg);
   void LeaveFrame(StackFrame::Type type);
 
   // Expects object in eax and returns map with validated enum cache

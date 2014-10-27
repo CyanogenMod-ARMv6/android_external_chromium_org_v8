@@ -3,9 +3,10 @@
 // found in the LICENSE file.
 
 #include "src/compiler/change-lowering.h"
-#include "src/compiler/machine-operator.h"
 
 #include "src/compiler/js-graph.h"
+#include "src/compiler/linkage.h"
+#include "src/compiler/machine-operator.h"
 
 namespace v8 {
 namespace internal {
@@ -96,8 +97,8 @@ Node* ChangeLowering::ChangeSmiToInt32(Node* value) {
 
 Node* ChangeLowering::LoadHeapNumberValue(Node* value, Node* control) {
   return graph()->NewNode(machine()->Load(kMachFloat64), value,
-                          HeapNumberValueIndexConstant(),
-                          graph()->NewNode(common()->ControlEffect(), control));
+                          HeapNumberValueIndexConstant(), graph()->start(),
+                          control);
 }
 
 
@@ -141,7 +142,8 @@ Reduction ChangeLowering::ChangeInt32ToTagged(Node* val, Node* control) {
   Node* add = graph()->NewNode(machine()->Int32AddWithOverflow(), val, val);
   Node* ovf = graph()->NewNode(common()->Projection(1), add);
 
-  Node* branch = graph()->NewNode(common()->Branch(), ovf, control);
+  Node* branch =
+      graph()->NewNode(common()->Branch(BranchHint::kTrue), ovf, control);
 
   Node* if_true = graph()->NewNode(common()->IfTrue(), branch);
   Node* heap_number = AllocateHeapNumberWithValue(
@@ -214,7 +216,8 @@ Reduction ChangeLowering::ChangeUint32ToTagged(Node* val, Node* control) {
 
   Node* cmp = graph()->NewNode(machine()->Uint32LessThanOrEqual(), val,
                                SmiMaxValueConstant());
-  Node* branch = graph()->NewNode(common()->Branch(), cmp, control);
+  Node* branch =
+      graph()->NewNode(common()->Branch(BranchHint::kTrue), cmp, control);
 
   Node* if_true = graph()->NewNode(common()->IfTrue(), branch);
   Node* smi = graph()->NewNode(

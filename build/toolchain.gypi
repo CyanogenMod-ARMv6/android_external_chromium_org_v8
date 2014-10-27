@@ -302,7 +302,7 @@
                     'cflags': ['-mfp32'],
                   }],
                   ['mips_arch_variant=="r6"', {
-                    'cflags!': ['-mfp32'],
+                    'cflags!': ['-mfp32', '-mfpxx'],
                     'cflags': ['-mips32r6', '-Wa,-mips32r6'],
                     'ldflags': [
                       '-mips32r6',
@@ -312,14 +312,17 @@
                   }],
                   ['mips_arch_variant=="r2"', {
                     'cflags': ['-mips32r2', '-Wa,-mips32r2'],
+                    'ldflags': ['-mips32r2'],
                   }],
                   ['mips_arch_variant=="r1"', {
-                    'cflags!': ['-mfp64'],
+                    'cflags!': ['-mfp64', '-mfpxx'],
                     'cflags': ['-mips32', '-Wa,-mips32'],
+                    'ldflags': ['-mips32'],
                   }],
                   ['mips_arch_variant=="rx"', {
-                    'cflags!': ['-mfp64'],
-                    'cflags': ['-mips32', '-Wa,-mips32'],
+                    'cflags!': ['-mfp64', '-mfp32'],
+                    'cflags': ['-mips32', '-Wa,-mips32', '-mfpxx'],
+                    'ldflags': ['-mips32'],
                   }],
                 ],
               }],
@@ -400,7 +403,7 @@
                     'cflags': ['-mfp32'],
                   }],
                   ['mips_arch_variant=="r6"', {
-                    'cflags!': ['-mfp32'],
+                    'cflags!': ['-mfp32', '-mfpxx'],
                     'cflags': ['-mips32r6', '-Wa,-mips32r6'],
                     'ldflags': [
                       '-mips32r6',
@@ -410,17 +413,20 @@
                   }],
                   ['mips_arch_variant=="r2"', {
                     'cflags': ['-mips32r2', '-Wa,-mips32r2'],
+                    'ldflags': ['-mips32r2'],
                   }],
                   ['mips_arch_variant=="r1"', {
-                    'cflags!': ['-mfp64'],
+                    'cflags!': ['-mfp64', '-mfpxx'],
                     'cflags': ['-mips32', '-Wa,-mips32'],
+                    'ldflags': ['-mips32'],
                   }],
                   ['mips_arch_variant=="rx"', {
-                    'cflags!': ['-mfp64'],
-                    'cflags': ['-mips32', '-Wa,-mips32'],
+                    'cflags!': ['-mfp64', '-mfp32'],
+                    'cflags': ['-mips32', '-Wa,-mips32', '-mfpxx'],
+                    'ldflags': ['-mips32'],
                   }],
                   ['mips_arch_variant=="loongson"', {
-                    'cflags!': ['-mfp64'],
+                    'cflags!': ['-mfp64', '-mfp32', '-mfpxx'],
                     'cflags': ['-mips3', '-Wa,-mips3'],
                   }],
                 ],
@@ -621,6 +627,12 @@
                 'cflags': [ '-m32' ],
                 'ldflags': [ '-m32' ],
               }],
+              # Enable feedback-directed optimisation when building in android.
+              [ 'android_webview_build == 1', {
+                'aosp_build_settings': {
+                  'LOCAL_FDO_SUPPORT': 'true',
+                },
+              }],
             ],
             'xcode_settings': {
               'ARCHS': [ 'i386' ],
@@ -644,6 +656,12 @@
                ['target_cxx_is_biarch==1', {
                  'cflags': [ '-m64' ],
                  'ldflags': [ '-m64' ],
+               }],
+               # Enable feedback-directed optimisation when building in android.
+               [ 'android_webview_build == 1', {
+                 'aosp_build_settings': {
+                   'LOCAL_FDO_SUPPORT': 'true',
+                 },
                }],
              ]
            }],
@@ -690,7 +708,6 @@
           ['OS=="linux" or OS=="freebsd" or OS=="openbsd" or OS=="netbsd" or \
             OS=="qnx"', {
             'cflags!': [
-              '-O0',
               '-O3',
               '-O2',
               '-O1',
@@ -778,10 +795,6 @@
                 'RuntimeLibrary': '3',  #/MDd
               }, {
                 'RuntimeLibrary': '1',  #/MTd
-              }],
-              ['v8_target_arch=="x64"', {
-                # TODO(2207): remove this option once the bug is fixed.
-                'WholeProgramOptimization': 'true',
               }],
             ],
           },
@@ -951,10 +964,6 @@
                     'RuntimeLibrary': '2',  #/MD
                   }, {
                     'RuntimeLibrary': '0',  #/MT
-                  }],
-                  ['v8_target_arch=="x64"', {
-                    # TODO(2207): remove this option once the bug is fixed.
-                    'WholeProgramOptimization': 'true',
                   }],
                 ],
               },

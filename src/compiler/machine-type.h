@@ -5,15 +5,14 @@
 #ifndef V8_COMPILER_MACHINE_TYPE_H_
 #define V8_COMPILER_MACHINE_TYPE_H_
 
+#include <iosfwd>
+
 #include "src/base/bits.h"
 #include "src/globals.h"
 #include "src/zone.h"
 
 namespace v8 {
 namespace internal {
-
-class OStream;
-
 namespace compiler {
 
 // Machine-level types and representations.
@@ -40,6 +39,7 @@ enum MachineType {
 
   // Machine types.
   kMachNone = 0,
+  kMachBool = kRepBit | kTypeBool,
   kMachFloat32 = kRepFloat32 | kTypeNumber,
   kMachFloat64 = kRepFloat64 | kTypeNumber,
   kMachInt8 = kRepWord8 | kTypeInt32,
@@ -54,7 +54,7 @@ enum MachineType {
   kMachAnyTagged = kRepTagged | kTypeAny
 };
 
-OStream& operator<<(OStream& os, const MachineType& type);
+std::ostream& operator<<(std::ostream& os, const MachineType& type);
 
 typedef uint16_t MachineTypeUnion;
 

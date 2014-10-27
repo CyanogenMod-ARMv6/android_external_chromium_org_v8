@@ -24,39 +24,76 @@ class ControlOperator : public Operator1<int> {
       : Operator1<int>(opcode, properties, inputs, outputs, mnemonic,
                        controls) {}
 
-  virtual OStream& PrintParameter(OStream& os) const FINAL { return os; }
+  virtual void PrintParameter(std::ostream& os) const FINAL {}
 };
 
 }  // namespace
 
 
-// Specialization for static parameters of type {ExternalReference}.
-template <>
-struct StaticParameterTraits<ExternalReference> {
-  static OStream& PrintTo(OStream& os, ExternalReference reference) {
-    os << reference.address();
-    // TODO(bmeurer): Move to operator<<(os, ExternalReference)
-    const Runtime::Function* function =
-        Runtime::FunctionForEntry(reference.address());
-    if (function) {
-      os << " <" << function->name << ".entry>";
-    }
-    return os;
+std::ostream& operator<<(std::ostream& os, BranchHint hint) {
+  switch (hint) {
+    case BranchHint::kNone:
+      return os << "None";
+    case BranchHint::kTrue:
+      return os << "True";
+    case BranchHint::kFalse:
+      return os << "False";
   }
-  static int HashCode(ExternalReference reference) {
-    return bit_cast<int>(static_cast<uint32_t>(
-        reinterpret_cast<uintptr_t>(reference.address())));
+  UNREACHABLE();
+  return os;
+}
+
+
+BranchHint BranchHintOf(const Operator* const op) {
+  DCHECK_EQ(IrOpcode::kBranch, op->opcode());
+  return OpParameter<BranchHint>(op);
+}
+
+
+size_t hash_value(OutputFrameStateCombine const& sc) {
+  return base::hash_combine(sc.kind_, sc.parameter_);
+}
+
+
+std::ostream& operator<<(std::ostream& os, OutputFrameStateCombine const& sc) {
+  switch (sc.kind_) {
+    case OutputFrameStateCombine::kPushOutput:
+      if (sc.parameter_ == 0) return os << "Ignore";
+      return os << "Push(" << sc.parameter_ << ")";
+    case OutputFrameStateCombine::kPokeAt:
+      return os << "PokeAt(" << sc.parameter_ << ")";
   }
-  static bool Equals(ExternalReference lhs, ExternalReference rhs) {
-    return lhs == rhs;
-  }
-};
+  UNREACHABLE();
+  return os;
+}
+
+
+bool operator==(FrameStateCallInfo const& lhs, FrameStateCallInfo const& rhs) {
+  return lhs.type() == rhs.type() && lhs.bailout_id() == rhs.bailout_id() &&
+         lhs.state_combine() == rhs.state_combine();
+}
+
+
+bool operator!=(FrameStateCallInfo const& lhs, FrameStateCallInfo const& rhs) {
+  return !(lhs == rhs);
+}
+
+
+size_t hash_value(FrameStateCallInfo const& info) {
+  return base::hash_combine(info.type(), info.bailout_id(),
+                            info.state_combine());
+}
+
+
+std::ostream& operator<<(std::ostream& os, FrameStateCallInfo const& info) {
+  return os << info.type() << ", " << info.bailout_id() << ", "
+            << info.state_combine();
+}
 
 
 #define SHARED_OP_LIST(V)               \
   V(Dead, Operator::kFoldable, 0, 0)    \
   V(End, Operator::kFoldable, 0, 1)     \
-  V(Branch, Operator::kFoldable, 1, 1)  \
   V(IfTrue, Operator::kFoldable, 0, 1)  \
   V(IfFalse, Operator::kFoldable, 0, 1) \
   V(Throw, Operator::kFoldable, 1, 1)   \
@@ -73,13 +110,6 @@ struct CommonOperatorBuilderImpl FINAL {
   Name##Operator k##Name##Operator;
   SHARED_OP_LIST(SHARED)
 #undef SHARED
-
-  struct ControlEffectOperator FINAL : public SimpleOperator {
-    ControlEffectOperator()
-        : SimpleOperator(IrOpcode::kControlEffect, Operator::kPure, 0, 0,
-                         "ControlEffect") {}
-  };
-  ControlEffectOperator kControlEffectOperator;
 };
 
 
@@ -99,6 +129,12 @@ SHARED_OP_LIST(SHARED)
 #undef SHARED
 
 
+const Operator* CommonOperatorBuilder::Branch(BranchHint hint) {
+  return new (zone()) Operator1<BranchHint>(
+      IrOpcode::kBranch, Operator::kFoldable, 1, 0, "Branch", hint);
+}
+
+
 const Operator* CommonOperatorBuilder::Start(int num_formal_parameters) {
   // Outputs are formal parameters, plus context, receiver, and JSFunction.
   const int value_output_count = num_formal_parameters + 3;
@@ -116,6 +152,13 @@ const Operator* CommonOperatorBuilder::Merge(int controls) {
 const Operator* CommonOperatorBuilder::Loop(int controls) {
   return new (zone()) ControlOperator(IrOpcode::kLoop, Operator::kFoldable, 0,
                                       0, controls, "Loop");
+}
+
+
+const Operator* CommonOperatorBuilder::Terminate(int effects) {
+  return new (zone()) Operator1<int>(IrOpcode::kTerminate,
+                                     Operator::kNoRead | Operator::kNoWrite, 0,
+                                     0, "Terminate", effects);
 }
 
 
@@ -139,15 +182,17 @@ const Operator* CommonOperatorBuilder::Int64Constant(int64_t value) {
 
 const Operator* CommonOperatorBuilder::Float32Constant(volatile float value) {
   return new (zone())
-      Operator1<float>(IrOpcode::kFloat32Constant, Operator::kPure, 0, 1,
-                       "Float32Constant", value);
+      Operator1<float, base::bit_equal_to<float>, base::bit_hash<float>>(
+          IrOpcode::kFloat32Constant, Operator::kPure, 0, 1, "Float32Constant",
+          value);
 }
 
 
 const Operator* CommonOperatorBuilder::Float64Constant(volatile double value) {
   return new (zone())
-      Operator1<double>(IrOpcode::kFloat64Constant, Operator::kPure, 0, 1,
-                        "Float64Constant", value);
+      Operator1<double, base::bit_equal_to<double>, base::bit_hash<double>>(
+          IrOpcode::kFloat64Constant, Operator::kPure, 0, 1, "Float64Constant",
+          value);
 }
 
 
@@ -161,14 +206,15 @@ const Operator* CommonOperatorBuilder::ExternalConstant(
 
 const Operator* CommonOperatorBuilder::NumberConstant(volatile double value) {
   return new (zone())
-      Operator1<double>(IrOpcode::kNumberConstant, Operator::kPure, 0, 1,
-                        "NumberConstant", value);
+      Operator1<double, base::bit_equal_to<double>, base::bit_hash<double>>(
+          IrOpcode::kNumberConstant, Operator::kPure, 0, 1, "NumberConstant",
+          value);
 }
 
 
 const Operator* CommonOperatorBuilder::HeapConstant(
-    const Unique<Object>& value) {
-  return new (zone()) Operator1<Unique<Object> >(
+    const Unique<HeapObject>& value) {
+  return new (zone()) Operator1<Unique<HeapObject>>(
       IrOpcode::kHeapConstant, Operator::kPure, 0, 1, "HeapConstant", value);
 }
 
@@ -187,15 +233,10 @@ const Operator* CommonOperatorBuilder::EffectPhi(int arguments) {
 }
 
 
-const Operator* CommonOperatorBuilder::ControlEffect() {
-  return &impl_.kControlEffectOperator;
-}
-
-
 const Operator* CommonOperatorBuilder::ValueEffect(int arguments) {
   DCHECK(arguments > 0);  // Disallow empty value effects.
-  return new (zone()) SimpleOperator(IrOpcode::kValueEffect, Operator::kPure,
-                                     arguments, 0, "ValueEffect");
+  return new (zone()) Operator1<int>(IrOpcode::kValueEffect, Operator::kPure,
+                                     arguments, 0, "ValueEffect", arguments);
 }
 
 
@@ -234,8 +275,8 @@ const Operator* CommonOperatorBuilder::Call(const CallDescriptor* descriptor) {
               static_cast<int>(descriptor->ReturnCount()), mnemonic,
               descriptor) {}
 
-    virtual OStream& PrintParameter(OStream& os) const OVERRIDE {
-      return os << "[" << *parameter() << "]";
+    virtual void PrintParameter(std::ostream& os) const OVERRIDE {
+      os << "[" << *parameter() << "]";
     }
   };
   return new (zone()) CallOperator(descriptor, "Call");

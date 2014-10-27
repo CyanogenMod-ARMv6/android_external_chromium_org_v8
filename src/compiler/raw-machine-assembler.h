@@ -57,7 +57,7 @@ class RawMachineAssembler : public GraphBuilder {
   MachineSignature* machine_sig() const { return machine_sig_; }
 
   Node* UndefinedConstant() {
-    Unique<Object> unique = Unique<Object>::CreateImmovable(
+    Unique<HeapObject> unique = Unique<HeapObject>::CreateImmovable(
         isolate()->factory()->undefined_value());
     return NewNode(common()->HeapConstant(unique));
   }
@@ -80,11 +80,14 @@ class RawMachineAssembler : public GraphBuilder {
   Node* NumberConstant(double value) {
     return NewNode(common()->NumberConstant(value));
   }
+  Node* Float32Constant(float value) {
+    return NewNode(common()->Float32Constant(value));
+  }
   Node* Float64Constant(double value) {
     return NewNode(common()->Float64Constant(value));
   }
-  Node* HeapConstant(Handle<Object> object) {
-    Unique<Object> val = Unique<Object>::CreateUninitialized(object);
+  Node* HeapConstant(Handle<HeapObject> object) {
+    Unique<HeapObject> val = Unique<HeapObject>::CreateUninitialized(object);
     return NewNode(common()->HeapConstant(val));
   }
 
@@ -222,17 +225,14 @@ class RawMachineAssembler : public GraphBuilder {
   Node* Int32Mul(Node* a, Node* b) {
     return NewNode(machine()->Int32Mul(), a, b);
   }
+  Node* Int32MulHigh(Node* a, Node* b) {
+    return NewNode(machine()->Int32MulHigh(), a, b);
+  }
   Node* Int32Div(Node* a, Node* b) {
     return NewNode(machine()->Int32Div(), a, b);
   }
-  Node* Int32UDiv(Node* a, Node* b) {
-    return NewNode(machine()->Int32UDiv(), a, b);
-  }
   Node* Int32Mod(Node* a, Node* b) {
     return NewNode(machine()->Int32Mod(), a, b);
-  }
-  Node* Int32UMod(Node* a, Node* b) {
-    return NewNode(machine()->Int32UMod(), a, b);
   }
   Node* Int32LessThan(Node* a, Node* b) {
     return NewNode(machine()->Int32LessThan(), a, b);
@@ -240,11 +240,17 @@ class RawMachineAssembler : public GraphBuilder {
   Node* Int32LessThanOrEqual(Node* a, Node* b) {
     return NewNode(machine()->Int32LessThanOrEqual(), a, b);
   }
+  Node* Uint32Div(Node* a, Node* b) {
+    return NewNode(machine()->Uint32Div(), a, b);
+  }
   Node* Uint32LessThan(Node* a, Node* b) {
     return NewNode(machine()->Uint32LessThan(), a, b);
   }
   Node* Uint32LessThanOrEqual(Node* a, Node* b) {
     return NewNode(machine()->Uint32LessThanOrEqual(), a, b);
+  }
+  Node* Uint32Mod(Node* a, Node* b) {
+    return NewNode(machine()->Uint32Mod(), a, b);
   }
   Node* Int32GreaterThan(Node* a, Node* b) { return Int32LessThan(b, a); }
   Node* Int32GreaterThanOrEqual(Node* a, Node* b) {
@@ -264,14 +270,8 @@ class RawMachineAssembler : public GraphBuilder {
   Node* Int64Div(Node* a, Node* b) {
     return NewNode(machine()->Int64Div(), a, b);
   }
-  Node* Int64UDiv(Node* a, Node* b) {
-    return NewNode(machine()->Int64UDiv(), a, b);
-  }
   Node* Int64Mod(Node* a, Node* b) {
     return NewNode(machine()->Int64Mod(), a, b);
-  }
-  Node* Int64UMod(Node* a, Node* b) {
-    return NewNode(machine()->Int64UMod(), a, b);
   }
   Node* Int64Neg(Node* a) { return Int64Sub(Int64Constant(0), a); }
   Node* Int64LessThan(Node* a, Node* b) {
@@ -283,6 +283,12 @@ class RawMachineAssembler : public GraphBuilder {
   Node* Int64GreaterThan(Node* a, Node* b) { return Int64LessThan(b, a); }
   Node* Int64GreaterThanOrEqual(Node* a, Node* b) {
     return Int64LessThanOrEqual(b, a);
+  }
+  Node* Uint64Div(Node* a, Node* b) {
+    return NewNode(machine()->Uint64Div(), a, b);
+  }
+  Node* Uint64Mod(Node* a, Node* b) {
+    return NewNode(machine()->Uint64Mod(), a, b);
   }
 
   // TODO(turbofan): What is this used for?
@@ -344,6 +350,9 @@ class RawMachineAssembler : public GraphBuilder {
   }
 
   // Conversions.
+  Node* ChangeFloat32ToFloat64(Node* a) {
+    return NewNode(machine()->ChangeFloat32ToFloat64(), a);
+  }
   Node* ChangeInt32ToFloat64(Node* a) {
     return NewNode(machine()->ChangeInt32ToFloat64(), a);
   }
@@ -361,6 +370,9 @@ class RawMachineAssembler : public GraphBuilder {
   }
   Node* ChangeUint32ToUint64(Node* a) {
     return NewNode(machine()->ChangeUint32ToUint64(), a);
+  }
+  Node* TruncateFloat64ToFloat32(Node* a) {
+    return NewNode(machine()->TruncateFloat64ToFloat32(), a);
   }
   Node* TruncateFloat64ToInt32(Node* a) {
     return NewNode(machine()->TruncateFloat64ToInt32(), a);

@@ -16,9 +16,9 @@ GYP_TARGET_DEPENDENCIES := \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,v8_tools_gyp_v8_base_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/v8_tools_gyp_v8_base_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,v8_tools_gyp_v8_nosnapshot_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/v8_tools_gyp_v8_nosnapshot_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,v8_tools_gyp_v8_libplatform_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/v8_tools_gyp_v8_libplatform_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
-	$(call intermediates-dir-for,STATIC_LIBRARIES,v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,third_party_icu_icui18n_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/third_party_icu_icui18n_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,third_party_icu_icuuc_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/third_party_icu_icuuc_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
+	$(call intermediates-dir-for,STATIC_LIBRARIES,v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,third_party_icu_icudata_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/third_party_icu_icudata_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp.a \
 	$(call intermediates-dir-for,GYP,v8_tools_gyp_js2c_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp,true,,$(GYP_HOST_VAR_PREFIX))/js2c.stamp
 
@@ -82,17 +82,14 @@ MY_DEFS_Debug := \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
-	'-DDATA_REDUCTION_FALLBACK_HOST="http://compress.googlezip.net:80/"' \
-	'-DDATA_REDUCTION_DEV_HOST="https://proxy-dev.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_DEV_FALLBACK_HOST="http://proxy-dev.googlezip.net:80/"' \
-	'-DSPDY_PROXY_AUTH_ORIGIN="https://proxy.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_PROXY_PROBE_URL="http://check.googlezip.net/connect"' \
-	'-DDATA_REDUCTION_PROXY_WARMUP_URL="http://www.gstatic.com/generate_204"' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
 	'-DV8_TARGET_ARCH_ARM' \
 	'-DCAN_USE_ARMV7_INSTRUCTIONS' \
 	'-DV8_I18N_SUPPORT' \
+	'-DU_USING_ICU_NAMESPACE=0' \
+	'-DU_ENABLE_DYLOAD=0' \
+	'-DU_STATIC_IMPLEMENTATION' \
 	'-DUSE_OPENSSL=1' \
 	'-DUSE_OPENSSL_CERTS=1' \
 	'-DDYNAMIC_ANNOTATIONS_ENABLED=1' \
@@ -109,7 +106,9 @@ MY_DEFS_Debug := \
 # Include paths placed before CFLAGS/CPPFLAGS
 LOCAL_C_INCLUDES_Debug := \
 	$(LOCAL_PATH)/v8 \
-	$(gyp_shared_intermediate_dir)
+	$(gyp_shared_intermediate_dir) \
+	$(LOCAL_PATH)/third_party/icu/source/i18n \
+	$(LOCAL_PATH)/third_party/icu/source/common
 
 
 # Flags passed to only C++ (and not C) files.
@@ -169,17 +168,14 @@ MY_DEFS_Release := \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
-	'-DDATA_REDUCTION_FALLBACK_HOST="http://compress.googlezip.net:80/"' \
-	'-DDATA_REDUCTION_DEV_HOST="https://proxy-dev.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_DEV_FALLBACK_HOST="http://proxy-dev.googlezip.net:80/"' \
-	'-DSPDY_PROXY_AUTH_ORIGIN="https://proxy.googlezip.net:443/"' \
-	'-DDATA_REDUCTION_PROXY_PROBE_URL="http://check.googlezip.net/connect"' \
-	'-DDATA_REDUCTION_PROXY_WARMUP_URL="http://www.gstatic.com/generate_204"' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
 	'-DV8_TARGET_ARCH_ARM' \
 	'-DCAN_USE_ARMV7_INSTRUCTIONS' \
 	'-DV8_I18N_SUPPORT' \
+	'-DU_USING_ICU_NAMESPACE=0' \
+	'-DU_ENABLE_DYLOAD=0' \
+	'-DU_STATIC_IMPLEMENTATION' \
 	'-DUSE_OPENSSL=1' \
 	'-DUSE_OPENSSL_CERTS=1' \
 	'-DNDEBUG' \
@@ -191,7 +187,9 @@ MY_DEFS_Release := \
 # Include paths placed before CFLAGS/CPPFLAGS
 LOCAL_C_INCLUDES_Release := \
 	$(LOCAL_PATH)/v8 \
-	$(gyp_shared_intermediate_dir)
+	$(gyp_shared_intermediate_dir) \
+	$(LOCAL_PATH)/third_party/icu/source/i18n \
+	$(LOCAL_PATH)/third_party/icu/source/common
 
 
 # Flags passed to only C++ (and not C) files.
@@ -223,20 +221,24 @@ LOCAL_LDFLAGS_Release := \
 	-fPIC \
 	-m32
 
+LOCAL_GYP_LIBS :=
 
-LOCAL_LDFLAGS := $(LOCAL_LDFLAGS_$(GYP_CONFIGURATION))
+LOCAL_LDFLAGS := $(LOCAL_LDFLAGS_$(GYP_CONFIGURATION)) $(LOCAL_GYP_LIBS)
 
 LOCAL_STATIC_LIBRARIES := \
 	v8_tools_gyp_v8_base_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
 	v8_tools_gyp_v8_nosnapshot_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
 	v8_tools_gyp_v8_libplatform_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
-	v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
 	third_party_icu_icui18n_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
 	third_party_icu_icuuc_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
+	v8_tools_gyp_v8_libbase_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp \
 	third_party_icu_icudata_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp
 
 # Enable grouping to fix circular references
 LOCAL_GROUP_STATIC_LIBRARIES := true
+### Set directly by aosp_build_settings.
+LOCAL_CLANG := true
+
 # Add target alias to "gyp_all_modules" target.
 .PHONY: gyp_all_modules
 gyp_all_modules: v8_tools_gyp_mksnapshot_$(TARGET_$(GYP_VAR_PREFIX)ARCH)_host_gyp

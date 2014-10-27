@@ -80,7 +80,11 @@ class GitFailedException(Exception):
 
 def Strip(f):
   def new_f(*args, **kwargs):
-    return f(*args, **kwargs).strip()
+    result = f(*args, **kwargs)
+    if result is None:
+      return result
+    else:
+      return result.strip()
   return new_f
 
 
@@ -194,7 +198,7 @@ class GitRecipesMixin(object):
     self.Git(MakeArgs(args), **kwargs)
 
   def GitUpload(self, reviewer="", author="", force=False, cq=False,
-                bypass_hooks=False, **kwargs):
+                bypass_hooks=False, cc="", **kwargs):
     args = ["cl upload --send-mail"]
     if author:
       args += ["--email", Quoted(author)]
@@ -206,6 +210,8 @@ class GitRecipesMixin(object):
       args.append("--use-commit-queue")
     if bypass_hooks:
       args.append("--bypass-hooks")
+    if cc:
+      args += ["--cc", Quoted(cc)]
     # TODO(machenbach): Check output in forced mode. Verify that all required
     # base files were uploaded, if not retry.
     self.Git(MakeArgs(args), pipe=False, **kwargs)
@@ -293,8 +299,11 @@ class GitRecipesMixin(object):
   @Strip
   def GitSVNFindGitHash(self, revision, branch="", **kwargs):
     assert revision
-    return self.Git(
-        MakeArgs(["svn find-rev", "r%s" % revision, branch]), **kwargs)
+    args = MakeArgs(["svn find-rev", "r%s" % revision, branch])
+
+    # Pick the last line if multiple lines are available. The first lines might
+    # print information about rebuilding the svn-git mapping.
+    return self.Git(args, **kwargs).splitlines()[-1]
 
   @Strip
   def GitSVNFindSVNRev(self, git_hash, branch="", **kwargs):

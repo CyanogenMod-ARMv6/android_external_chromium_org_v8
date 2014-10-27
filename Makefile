@@ -140,10 +140,15 @@ endif
 # asan=/path/to/clang++
 ifneq ($(strip $(asan)),)
   GYPFLAGS += -Dasan=1
+  export CC=$(dir $(asan))clang
   export CXX=$(asan)
   export CXX_host=$(asan)
   export LINK=$(asan)
-  export ASAN_SYMBOLIZER_PATH="$(dir $(asan))llvm-symbolizer"
+  export ASAN_SYMBOLIZER_PATH=$(dir $(asan))llvm-symbolizer
+  TESTFLAGS += --asan
+  ifeq ($(lsan), on)
+    GYPFLAGS += -Dlsan=1
+  endif
 endif
 
 # arm specific flags.
@@ -230,8 +235,8 @@ NACL_ARCHES = nacl_ia32 nacl_x64
 
 # List of files that trigger Makefile regeneration:
 GYPFILES = build/all.gyp build/features.gypi build/standalone.gypi \
-           build/toolchain.gypi samples/samples.gyp src/compiler/compiler.gyp \
-           src/d8.gyp test/cctest/cctest.gyp tools/gyp/v8.gyp
+           build/toolchain.gypi samples/samples.gyp src/d8.gyp \
+           test/cctest/cctest.gyp test/unittests/unittests.gyp tools/gyp/v8.gyp
 
 # If vtunejit=on, the v8vtune.gyp will be appended.
 ifeq ($(vtunejit), on)

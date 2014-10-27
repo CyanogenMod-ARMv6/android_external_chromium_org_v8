@@ -6,6 +6,7 @@
 
 #include "src/compiler.h"
 
+#include "src/ast-numbering.h"
 #include "src/bootstrapper.h"
 #include "src/codegen.h"
 #include "src/compilation-cache.h"
@@ -52,7 +53,8 @@ CompilationInfo::CompilationInfo(Handle<Script> script, Zone* zone)
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(script->GetIsolate(), BASE, zone);
 }
 
@@ -65,7 +67,8 @@ CompilationInfo::CompilationInfo(Isolate* isolate, Zone* zone)
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(isolate, STUB, zone);
 }
 
@@ -80,7 +83,8 @@ CompilationInfo::CompilationInfo(Handle<SharedFunctionInfo> shared_info,
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(script_->GetIsolate(), BASE, zone);
 }
 
@@ -96,7 +100,8 @@ CompilationInfo::CompilationInfo(Handle<JSFunction> closure, Zone* zone)
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(script_->GetIsolate(), BASE, zone);
 }
 
@@ -109,7 +114,8 @@ CompilationInfo::CompilationInfo(HydrogenCodeStub* stub, Isolate* isolate,
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(isolate, STUB, zone);
   code_stub_ = stub;
 }
@@ -126,7 +132,8 @@ CompilationInfo::CompilationInfo(
       parameter_count_(0),
       optimization_id_(-1),
       ast_value_factory_(NULL),
-      ast_value_factory_owned_(false) {
+      ast_value_factory_owned_(false),
+      aborted_due_to_dependency_change_(false) {
   Initialize(isolate, BASE, zone);
 }
 
@@ -159,6 +166,14 @@ void CompilationInfo::Initialize(Isolate* isolate,
   if (!script_.is_null() && script_->type()->value() == Script::TYPE_NATIVE) {
     MarkAsNative();
   }
+  // Compiling for the snapshot typically results in different code than
+  // compiling later on. This means that code recompiled with deoptimization
+  // support won't be "equivalent" (as defined by SharedFunctionInfo::
+  // EnableDeoptimizationSupport), so it will replace the old code and all
+  // its type feedback. To avoid this, always compile functions in the snapshot
+  // with deoptimization support.
+  if (isolate_->serializer_enabled()) EnableDeoptimizationSupport();
+
   if (isolate_->debug()->is_active()) MarkAsDebug();
   if (FLAG_context_specialization) MarkAsContextSpecializing();
   if (FLAG_turbo_inlining) MarkAsInliningEnabled();
@@ -277,12 +292,13 @@ void CompilationInfo::PrepareForCompilation(Scope* scope) {
   DCHECK(scope_ == NULL);
   scope_ = scope;
 
-  int length = function()->slot_count();
   if (feedback_vector_.is_null()) {
     // Allocate the feedback vector too.
-    feedback_vector_ = isolate()->factory()->NewTypeFeedbackVector(length);
+    feedback_vector_ = isolate()->factory()->NewTypeFeedbackVector(
+        function()->slot_count(), function()->ic_slot_count());
   }
-  DCHECK(feedback_vector_->length() == length);
+  DCHECK(feedback_vector_->Slots() == function()->slot_count() &&
+         feedback_vector_->ICSlots() == function()->ic_slot_count());
 }
 
 
@@ -323,7 +339,6 @@ class HOptimizedGraphBuilderWithPositions: public HOptimizedGraphBuilder {
 
 
 OptimizedCompileJob::Status OptimizedCompileJob::CreateGraph() {
-  DCHECK(isolate()->use_crankshaft());
   DCHECK(info()->IsOptimizing());
   DCHECK(!info()->IsCompilingForDebugging());
 
@@ -399,9 +414,6 @@ OptimizedCompileJob::Status OptimizedCompileJob::CreateGraph() {
     compiler::Pipeline pipeline(info());
     pipeline.GenerateCode();
     if (!info()->code().is_null()) {
-      if (FLAG_turbo_deoptimization) {
-        info()->context()->native_context()->AddOptimizedCode(*info()->code());
-      }
       return SetLastStatus(SUCCEEDED);
     }
   }
@@ -470,6 +482,9 @@ OptimizedCompileJob::Status OptimizedCompileJob::GenerateCode() {
   DCHECK(last_status() == SUCCEEDED);
   // TODO(turbofan): Currently everything is done in the first phase.
   if (!info()->code().is_null()) {
+    if (FLAG_turbo_deoptimization) {
+      info()->context()->native_context()->AddOptimizedCode(*info()->code());
+    }
     RecordOptimizationStats();
     return last_status();
   }
@@ -732,6 +747,7 @@ static bool CompileOptimizedPrologue(CompilationInfo* info) {
   if (!Parser::Parse(info)) return false;
   if (!Rewriter::Rewrite(info)) return false;
   if (!Scope::Analyze(info)) return false;
+  if (!AstNumbering::Renumber(info->function(), info->zone())) return false;
   DCHECK(info->scope() != NULL);
   return true;
 }
@@ -996,6 +1012,8 @@ static Handle<SharedFunctionInfo> CompileToplevel(CompilationInfo* info) {
 
   DCHECK(info->is_eval() || info->is_global());
 
+  info->MarkAsToplevel();
+
   Handle<SharedFunctionInfo> result;
 
   { VMState<COMPILER> state(info->isolate());
@@ -1162,7 +1180,12 @@ Handle<SharedFunctionInfo> Compiler::CompileScript(
         compile_options == ScriptCompiler::kConsumeCodeCache &&
         !isolate->debug()->is_loaded()) {
       HistogramTimerScope timer(isolate->counters()->compile_deserialize());
-      return CodeSerializer::Deserialize(isolate, *cached_data, source);
+      Handle<SharedFunctionInfo> result;
+      if (CodeSerializer::Deserialize(isolate, *cached_data, source)
+              .ToHandle(&result)) {
+        return result;
+      }
+      // Deserializer failed. Fall through to compile.
     } else {
       maybe_result = compilation_cache->LookupScript(
           source, script_name, line_offset, column_offset,
@@ -1206,14 +1229,17 @@ Handle<SharedFunctionInfo> Compiler::CompileScript(
     result = CompileToplevel(&info);
     if (extension == NULL && !result.is_null() && !result->dont_cache()) {
       compilation_cache->PutScript(source, context, result);
-      if (FLAG_serialize_toplevel &&
+      // TODO(yangguo): Issue 3628
+      // With block scoping, top-level variables may resolve to a global,
+      // context, which makes the code context-dependent.
+      if (FLAG_serialize_toplevel && !FLAG_harmony_scoping &&
           compile_options == ScriptCompiler::kProduceCodeCache) {
         HistogramTimerScope histogram_timer(
             isolate->counters()->compile_serialize());
         *cached_data = CodeSerializer::Serialize(isolate, result, source);
         if (FLAG_profile_deserialization) {
-          PrintF("[Compiling and serializing %d bytes took %0.3f ms]\n",
-                 (*cached_data)->length(), timer.Elapsed().InMillisecondsF());
+          PrintF("[Compiling and serializing took %0.3f ms]\n",
+                 timer.Elapsed().InMillisecondsF());
         }
       }
     }
@@ -1264,6 +1290,13 @@ Handle<SharedFunctionInfo> Compiler::BuildFunctionInfo(
   bool allow_lazy_without_ctx = literal->AllowsLazyCompilationWithoutContext();
   bool allow_lazy = literal->AllowsLazyCompilation() &&
       !DebuggerWantsEagerCompilation(&info, allow_lazy_without_ctx);
+
+
+  if (outer_info->is_toplevel() && outer_info->will_serialize()) {
+    // Make sure that if the toplevel code (possibly to be serialized),
+    // the inner unction must be allowed to be compiled lazily.
+    DCHECK(allow_lazy);
+  }
 
   // Generate code
   Handle<ScopeInfo> scope_info;

@@ -85,7 +85,7 @@ class CompilationInfo {
     kInliningEnabled = 1 << 17,
     kTypingEnabled = 1 << 18,
     kDisableFutureOptimization = 1 << 19,
-    kAbortedDueToDependency = 1 << 20
+    kToplevel = 1 << 20
   };
 
   CompilationInfo(Handle<JSFunction> closure, Zone* zone);
@@ -207,6 +207,10 @@ class CompilationInfo {
   void MarkAsTypingEnabled() { SetFlag(kTypingEnabled); }
 
   bool is_typing_enabled() const { return GetFlag(kTypingEnabled); }
+
+  void MarkAsToplevel() { SetFlag(kToplevel); }
+
+  bool is_toplevel() const { return GetFlag(kToplevel); }
 
   bool IsCodePreAgingActive() const {
     return FLAG_optimize_for_size && FLAG_age_code && !will_serialize() &&
@@ -366,12 +370,12 @@ class CompilationInfo {
 
   void AbortDueToDependencyChange() {
     DCHECK(!OptimizingCompilerThread::IsOptimizerThread(isolate()));
-    SetFlag(kAbortedDueToDependency);
+    aborted_due_to_dependency_change_ = true;
   }
 
   bool HasAbortedDueToDependencyChange() const {
     DCHECK(!OptimizingCompilerThread::IsOptimizerThread(isolate()));
-    return GetFlag(kAbortedDueToDependency);
+    return aborted_due_to_dependency_change_;
   }
 
   bool HasSameOsrEntry(Handle<JSFunction> function, BailoutId osr_ast_id) {
@@ -386,8 +390,6 @@ class CompilationInfo {
     ast_value_factory_ = ast_value_factory;
     ast_value_factory_owned_ = owned;
   }
-
-  AstNode::IdGen* ast_node_id_gen() { return &ast_node_id_gen_; }
 
  protected:
   CompilationInfo(Handle<Script> script,
@@ -508,7 +510,10 @@ class CompilationInfo {
 
   AstValueFactory* ast_value_factory_;
   bool ast_value_factory_owned_;
-  AstNode::IdGen ast_node_id_gen_;
+
+  // This flag is used by the main thread to track whether this compilation
+  // should be abandoned due to dependency change.
+  bool aborted_due_to_dependency_change_;
 
   DISALLOW_COPY_AND_ASSIGN(CompilationInfo);
 };

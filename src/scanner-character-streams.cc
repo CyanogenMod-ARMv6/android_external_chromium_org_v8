@@ -18,6 +18,10 @@ namespace {
 unsigned CopyCharsHelper(uint16_t* dest, unsigned length, const uint8_t* src,
                          unsigned* src_pos, unsigned src_length,
                          ScriptCompiler::StreamedSource::Encoding encoding) {
+  // It's possible that this will be called with length 0, but don't assume that
+  // the functions this calls handle it gracefully.
+  if (length == 0) return 0;
+
   if (encoding == ScriptCompiler::StreamedSource::UTF8) {
     return v8::internal::Utf8ToUtf16CharacterStream::CopyChars(
         dest, length, src, src_pos, src_length);
@@ -381,15 +385,22 @@ unsigned ExternalStreamingStream::FillBuffer(unsigned position) {
 
 void ExternalStreamingStream::HandleUtf8SplitCharacters(
     unsigned* data_in_buffer) {
+  // Note the following property of UTF-8 which makes this function possible:
+  // Given any byte, we can always read its local environment (in both
+  // directions) to find out the (possibly multi-byte) character it belongs
+  // to. Single byte characters are of the form 0b0XXXXXXX. The first byte of a
+  // multi-byte character is of the form 0b110XXXXX, 0b1110XXXX or
+  // 0b11110XXX. The continuation bytes are of the form 0b10XXXXXX.
+
   // First check if we have leftover data from the last chunk.
   unibrow::uchar c;
   if (utf8_split_char_buffer_length_ > 0) {
     // Move the bytes which are part of the split character (which started in
-    // the previous chunk) into utf8_split_char_buffer_.
+    // the previous chunk) into utf8_split_char_buffer_. Note that the
+    // continuation bytes are of the form 0b10XXXXXX, thus c >> 6 == 2.
     while (current_data_offset_ < current_data_length_ &&
            utf8_split_char_buffer_length_ < 4 &&
-           (c = current_data_[current_data_offset_]) >
-               unibrow::Utf8::kMaxOneByteChar) {
+           (c = current_data_[current_data_offset_]) >> 6 == 2) {
       utf8_split_char_buffer_[utf8_split_char_buffer_length_] = c;
       ++utf8_split_char_buffer_length_;
       ++current_data_offset_;
@@ -411,13 +422,23 @@ void ExternalStreamingStream::HandleUtf8SplitCharacters(
 
   // Move bytes which are part of an incomplete character from the end of the
   // current chunk to utf8_split_char_buffer_. They will be converted when the
-  // next data chunk arrives.
+  // next data chunk arrives. Note that all valid UTF-8 characters are at most 4
+  // bytes long, but if the data is invalid, we can have character values bigger
+  // than unibrow::Utf8::kMaxOneByteChar for more than 4 consecutive bytes.
   while (current_data_length_ > current_data_offset_ &&
          (c = current_data_[current_data_length_ - 1]) >
-             unibrow::Utf8::kMaxOneByteChar) {
+             unibrow::Utf8::kMaxOneByteChar &&
+         utf8_split_char_buffer_length_ < 4) {
     --current_data_length_;
     ++utf8_split_char_buffer_length_;
+    if (c >= (3 << 6)) {
+      // 3 << 6 = 0b11000000; this is the first byte of the multi-byte
+      // character. No need to copy the previous characters into the conversion
+      // buffer (even if they're multi-byte).
+      break;
+    }
   }
+  CHECK(utf8_split_char_buffer_length_ <= 4);
   for (unsigned i = 0; i < utf8_split_char_buffer_length_; ++i) {
     utf8_split_char_buffer_[i] = current_data_[current_data_length_ + i];
   }

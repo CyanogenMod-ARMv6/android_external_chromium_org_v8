@@ -5,6 +5,7 @@
 #ifndef V8_COMPILER_MACHINE_OPERATOR_H_
 #define V8_COMPILER_MACHINE_OPERATOR_H_
 
+#include "src/base/flags.h"
 #include "src/compiler/machine-type.h"
 
 namespace v8 {
@@ -19,14 +20,15 @@ class Operator;
 // Supported write barrier modes.
 enum WriteBarrierKind { kNoWriteBarrier, kFullWriteBarrier };
 
-OStream& operator<<(OStream& os, const WriteBarrierKind& write_barrier_kind);
+std::ostream& operator<<(std::ostream& os, WriteBarrierKind);
 
 
+// A Load needs a MachineType.
 typedef MachineType LoadRepresentation;
 
 
-// A Store needs a MachineType and a WriteBarrierKind
-// in order to emit the correct write barrier.
+// A Store needs a MachineType and a WriteBarrierKind in order to emit the
+// correct write barrier.
 class StoreRepresentation FINAL {
  public:
   StoreRepresentation(MachineType machine_type,
@@ -41,18 +43,14 @@ class StoreRepresentation FINAL {
   WriteBarrierKind write_barrier_kind_;
 };
 
-inline bool operator==(const StoreRepresentation& rep1,
-                       const StoreRepresentation& rep2) {
-  return rep1.machine_type() == rep2.machine_type() &&
-         rep1.write_barrier_kind() == rep2.write_barrier_kind();
-}
+bool operator==(StoreRepresentation, StoreRepresentation);
+bool operator!=(StoreRepresentation, StoreRepresentation);
 
-inline bool operator!=(const StoreRepresentation& rep1,
-                       const StoreRepresentation& rep2) {
-  return !(rep1 == rep2);
-}
+size_t hash_value(StoreRepresentation);
 
-OStream& operator<<(OStream& os, const StoreRepresentation& rep);
+std::ostream& operator<<(std::ostream&, StoreRepresentation);
+
+StoreRepresentation const& StoreRepresentationOf(Operator const*);
 
 
 // Interface for building machine-level operators. These operators are
@@ -60,7 +58,19 @@ OStream& operator<<(OStream& os, const StoreRepresentation& rep);
 // for generating code to run on architectures such as ia32, x64, arm, etc.
 class MachineOperatorBuilder FINAL {
  public:
-  explicit MachineOperatorBuilder(MachineType word = kMachPtr);
+  // Flags that specify which operations are available. This is useful
+  // for operations that are unsupported by some back-ends.
+  enum class Flag : unsigned {
+    kNoFlags = 0,
+    kFloat64Floor = 1 << 0,
+    kFloat64Ceil = 1 << 1,
+    kFloat64RoundTruncate = 1 << 2,
+    kFloat64RoundTiesAway = 1 << 3
+  };
+  typedef base::Flags<Flag, unsigned> Flags;
+
+  explicit MachineOperatorBuilder(MachineType word = kMachPtr,
+                                  Flags supportedOperators = Flag::kNoFlags);
 
   const Operator* Word32And();
   const Operator* Word32Or();
@@ -85,24 +95,26 @@ class MachineOperatorBuilder FINAL {
   const Operator* Int32Sub();
   const Operator* Int32SubWithOverflow();
   const Operator* Int32Mul();
+  const Operator* Int32MulHigh();
   const Operator* Int32Div();
-  const Operator* Int32UDiv();
   const Operator* Int32Mod();
-  const Operator* Int32UMod();
   const Operator* Int32LessThan();
   const Operator* Int32LessThanOrEqual();
+  const Operator* Uint32Div();
   const Operator* Uint32LessThan();
   const Operator* Uint32LessThanOrEqual();
+  const Operator* Uint32Mod();
 
   const Operator* Int64Add();
   const Operator* Int64Sub();
   const Operator* Int64Mul();
   const Operator* Int64Div();
-  const Operator* Int64UDiv();
   const Operator* Int64Mod();
-  const Operator* Int64UMod();
   const Operator* Int64LessThan();
   const Operator* Int64LessThanOrEqual();
+  const Operator* Uint64Div();
+  const Operator* Uint64LessThan();
+  const Operator* Uint64Mod();
 
   // These operators change the representation of numbers while preserving the
   // value of the number. Narrowing operators assume the input is representable
@@ -136,11 +148,28 @@ class MachineOperatorBuilder FINAL {
   const Operator* Float64LessThan();
   const Operator* Float64LessThanOrEqual();
 
+  // Floating point rounding.
+  const Operator* Float64Floor();
+  const Operator* Float64Ceil();
+  const Operator* Float64RoundTruncate();
+  const Operator* Float64RoundTiesAway();
+  bool HasFloat64Floor() { return flags_ & Flag::kFloat64Floor; }
+  bool HasFloat64Ceil() { return flags_ & Flag::kFloat64Ceil; }
+  bool HasFloat64RoundTruncate() {
+    return flags_ & Flag::kFloat64RoundTruncate;
+  }
+  bool HasFloat64RoundTiesAway() {
+    return flags_ & Flag::kFloat64RoundTiesAway;
+  }
+
   // load [base + index]
   const Operator* Load(LoadRepresentation rep);
 
   // store [base + index], value
   const Operator* Store(StoreRepresentation rep);
+
+  // Access to the machine stack.
+  const Operator* LoadStackPointer();
 
   // Target machine word-size assumed by this builder.
   bool Is32() const { return word() == kRepWord32; }
@@ -162,11 +191,12 @@ class MachineOperatorBuilder FINAL {
   V(Int, Sub)             \
   V(Int, Mul)             \
   V(Int, Div)             \
-  V(Int, UDiv)            \
   V(Int, Mod)             \
-  V(Int, UMod)            \
   V(Int, LessThan)        \
-  V(Int, LessThanOrEqual)
+  V(Int, LessThanOrEqual) \
+  V(Uint, Div)            \
+  V(Uint, LessThan)       \
+  V(Uint, Mod)
 #define PSEUDO_OP(Prefix, Suffix)                                \
   const Operator* Prefix##Suffix() {                             \
     return Is32() ? Prefix##32##Suffix() : Prefix##64##Suffix(); \
@@ -178,8 +208,11 @@ class MachineOperatorBuilder FINAL {
  private:
   const MachineOperatorBuilderImpl& impl_;
   const MachineType word_;
+  const Flags flags_;
 };
 
+
+DEFINE_OPERATORS_FOR_FLAGS(MachineOperatorBuilder::Flags)
 }  // namespace compiler
 }  // namespace internal
 }  // namespace v8

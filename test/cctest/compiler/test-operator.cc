@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <sstream>
+
 #include "src/v8.h"
 
 #include "src/compiler/operator.h"
@@ -9,9 +11,6 @@
 
 using namespace v8::internal;
 using namespace v8::internal::compiler;
-
-#define NaN (v8::base::OS::nan_value())
-#define Infinity (std::numeric_limits<double>::infinity())
 
 TEST(TestOperatorMnemonic) {
   SimpleOperator op1(10, Operator::kNoProperties, 0, 0, "ThisOne");
@@ -30,10 +29,10 @@ TEST(TestOperatorMnemonic) {
 
 TEST(TestSimpleOperatorHash) {
   SimpleOperator op1(17, Operator::kNoProperties, 0, 0, "Another");
-  CHECK_EQ(17, op1.HashCode());
+  CHECK_EQ(17, static_cast<int>(op1.HashCode()));
 
   SimpleOperator op2(18, Operator::kNoProperties, 0, 0, "Falsch");
-  CHECK_EQ(18, op2.HashCode());
+  CHECK_EQ(18, static_cast<int>(op2.HashCode()));
 }
 
 
@@ -67,9 +66,9 @@ TEST(TestSimpleOperatorEquals) {
 
 
 static SmartArrayPointer<const char> OperatorToString(Operator* op) {
-  OStringStream os;
+  std::ostringstream os;
   os << *op;
-  return SmartArrayPointer<const char>(StrDup(os.c_str()));
+  return SmartArrayPointer<const char>(StrDup(os.str().c_str()));
 }
 
 
@@ -92,13 +91,13 @@ TEST(TestOperator1intHash) {
   Operator1<int> op1a(23, Operator::kNoProperties, 0, 0, "Wolfie", 11);
   Operator1<int> op1b(23, Operator::kFoldable, 2, 2, "Doggie", 11);
 
-  CHECK_EQ(op1a.HashCode(), op1b.HashCode());
+  CHECK(op1a.HashCode() == op1b.HashCode());
 
   Operator1<int> op2a(24, Operator::kNoProperties, 0, 0, "Arfie", 3);
   Operator1<int> op2b(24, Operator::kNoProperties, 0, 0, "Arfie", 4);
 
-  CHECK_NE(op1a.HashCode(), op2a.HashCode());
-  CHECK_NE(op2a.HashCode(), op2b.HashCode());
+  CHECK(op1a.HashCode() != op2a.HashCode());
+  CHECK(op2a.HashCode() != op2b.HashCode());
 }
 
 
@@ -162,13 +161,13 @@ TEST(TestOperator1doubleHash) {
   Operator1<double> op1a(23, Operator::kNoProperties, 0, 0, "Wolfie", 11.77);
   Operator1<double> op1b(23, Operator::kFoldable, 2, 2, "Doggie", 11.77);
 
-  CHECK_EQ(op1a.HashCode(), op1b.HashCode());
+  CHECK(op1a.HashCode() == op1b.HashCode());
 
   Operator1<double> op2a(24, Operator::kNoProperties, 0, 0, "Arfie", -6.7);
   Operator1<double> op2b(24, Operator::kNoProperties, 0, 0, "Arfie", -6.8);
 
-  CHECK_NE(op1a.HashCode(), op2a.HashCode());
-  CHECK_NE(op2a.HashCode(), op2b.HashCode());
+  CHECK(op1a.HashCode() != op2a.HashCode());
+  CHECK(op2a.HashCode() != op2b.HashCode());
 }
 
 
@@ -211,8 +210,8 @@ TEST(TestOperator1doubleEquals) {
   CHECK(!op3.Equals(&op2a));
   CHECK(!op3.Equals(&op2b));
 
-  Operator1<double> op4a(24, Operator::kNoProperties, 0, 0, "Bashful", NaN);
-  Operator1<double> op4b(24, Operator::kNoProperties, 0, 0, "Bashful", NaN);
+  Operator1<double> op4a(24, Operator::kNoProperties, 0, 0, "Bashful", 1.0);
+  Operator1<double> op4b(24, Operator::kNoProperties, 0, 0, "Bashful", 1.0);
 
   CHECK(op4a.Equals(&op4a));
   CHECK(op4a.Equals(&op4b));
@@ -223,22 +222,4 @@ TEST(TestOperator1doubleEquals) {
   CHECK(!op3.Equals(&op4b));
   CHECK(!op3.Equals(&op4a));
   CHECK(!op3.Equals(&op4b));
-}
-
-
-TEST(TestOperator1doublePrint) {
-  Operator1<double> op1(12, Operator::kNoProperties, 0, 1, "Op1Test", 0);
-  CHECK_EQ("Op1Test[0]", OperatorToString(&op1).get());
-
-  Operator1<double> op2(12, Operator::kNoProperties, 0, 1, "Op1Test", 7.3);
-  CHECK_EQ("Op1Test[7.3]", OperatorToString(&op2).get());
-
-  Operator1<double> op3(12, Operator::kNoProperties, 0, 1, "FooBar", 2e+123);
-  CHECK_EQ("FooBar[2e+123]", OperatorToString(&op3).get());
-
-  Operator1<double> op4(12, Operator::kNoProperties, 0, 1, "BarFoo", Infinity);
-  CHECK_EQ("BarFoo[inf]", OperatorToString(&op4).get());
-
-  Operator1<double> op5(12, Operator::kNoProperties, 0, 1, "BarFoo", NaN);
-  CHECK_EQ("BarFoo[nan]", OperatorToString(&op5).get());
 }

@@ -742,6 +742,53 @@ THREADED_TEST(UsingExternalOneByteString) {
 }
 
 
+class DummyResource : public v8::String::ExternalStringResource {
+ public:
+  virtual const uint16_t* data() const { return string_; }
+  virtual size_t length() const { return 1 << 30; }
+
+ private:
+  uint16_t string_[10];
+};
+
+
+class DummyOneByteResource : public v8::String::ExternalOneByteStringResource {
+ public:
+  virtual const char* data() const { return string_; }
+  virtual size_t length() const { return 1 << 30; }
+
+ private:
+  char string_[10];
+};
+
+
+THREADED_TEST(NewExternalForVeryLongString) {
+  {
+    LocalContext env;
+    v8::HandleScope scope(env->GetIsolate());
+    v8::TryCatch try_catch;
+    DummyOneByteResource r;
+    v8::Local<v8::String> str = v8::String::NewExternal(CcTest::isolate(), &r);
+    CHECK(str.IsEmpty());
+    CHECK(try_catch.HasCaught());
+    String::Utf8Value exception_value(try_catch.Exception());
+    CHECK_EQ("RangeError: Invalid string length", *exception_value);
+  }
+
+  {
+    LocalContext env;
+    v8::HandleScope scope(env->GetIsolate());
+    v8::TryCatch try_catch;
+    DummyResource r;
+    v8::Local<v8::String> str = v8::String::NewExternal(CcTest::isolate(), &r);
+    CHECK(str.IsEmpty());
+    CHECK(try_catch.HasCaught());
+    String::Utf8Value exception_value(try_catch.Exception());
+    CHECK_EQ("RangeError: Invalid string length", *exception_value);
+  }
+}
+
+
 THREADED_TEST(ScavengeExternalString) {
   i::FLAG_stress_compaction = false;
   i::FLAG_gc_global = false;
@@ -934,7 +981,7 @@ static void CheckReturnValue(const T& t, i::Address callback) {
   // If CPU profiler is active check that when API callback is invoked
   // VMState is set to EXTERNAL.
   if (isolate->cpu_profiler()->is_profiling()) {
-    CHECK_EQ(i::EXTERNAL, isolate->current_vm_state());
+    CHECK_EQ(v8::EXTERNAL, isolate->current_vm_state());
     CHECK(isolate->external_callback_scope());
     CHECK_EQ(callback, isolate->external_callback_scope()->callback());
   }
@@ -1542,6 +1589,34 @@ THREADED_TEST(IsNativeError) {
 }
 
 
+THREADED_TEST(IsGeneratorFunctionOrObject) {
+  LocalContext env;
+  v8::HandleScope scope(env->GetIsolate());
+
+  CompileRun("function *gen() { yield 1; }\nfunction func() {}");
+  v8::Handle<Value> gen = CompileRun("gen");
+  v8::Handle<Value> genObj = CompileRun("gen()");
+  v8::Handle<Value> object = CompileRun("{a:42}");
+  v8::Handle<Value> func = CompileRun("func");
+
+  CHECK(gen->IsGeneratorFunction());
+  CHECK(gen->IsFunction());
+  CHECK(!gen->IsGeneratorObject());
+
+  CHECK(!genObj->IsGeneratorFunction());
+  CHECK(!genObj->IsFunction());
+  CHECK(genObj->IsGeneratorObject());
+
+  CHECK(!object->IsGeneratorFunction());
+  CHECK(!object->IsFunction());
+  CHECK(!object->IsGeneratorObject());
+
+  CHECK(!func->IsGeneratorFunction());
+  CHECK(func->IsFunction());
+  CHECK(!func->IsGeneratorObject());
+}
+
+
 THREADED_TEST(ArgumentsObject) {
   LocalContext env;
   v8::HandleScope scope(env->GetIsolate());
@@ -1944,6 +2019,19 @@ void SymbolAccessorSetter(Local<Name> name, Local<Value> value,
   if (sym->Name()->IsUndefined())
     return;
   SimpleAccessorSetter(Local<String>::Cast(sym->Name()), value, info);
+}
+
+void SymbolAccessorGetterReturnsDefault(
+    Local<Name> name, const v8::PropertyCallbackInfo<v8::Value>& info) {
+  CHECK(name->IsSymbol());
+  Local<Symbol> sym = Local<Symbol>::Cast(name);
+  if (sym->Name()->IsUndefined()) return;
+  info.GetReturnValue().Set(info.Data());
+}
+
+static void ThrowingSymbolAccessorGetter(
+    Local<Name> name, const v8::PropertyCallbackInfo<v8::Value>& info) {
+  info.GetReturnValue().Set(info.GetIsolate()->ThrowException(name));
 }
 
 void EmptyInterceptorGetter(Local<String> name,
@@ -2746,6 +2834,16 @@ THREADED_TEST(EmbedderData) {
                                                      "over the lazy dog."));
   CheckEmbedderData(&env, 1, v8::Number::New(isolate, 1.2345));
   CheckEmbedderData(&env, 0, v8::Boolean::New(isolate, true));
+}
+
+
+THREADED_TEST(GetIsolate) {
+  LocalContext env;
+  v8::Isolate* isolate = env->GetIsolate();
+  v8::HandleScope scope(isolate);
+  Local<v8::Object> obj = v8::Object::New(isolate);
+  CHECK_EQ(isolate, obj->GetIsolate());
+  CHECK_EQ(isolate, CcTest::global()->GetIsolate());
 }
 
 
@@ -8419,6 +8517,47 @@ THREADED_TEST(ErrorConstruction) {
 }
 
 
+static void ThrowV8Exception(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  ApiTestFuzzer::Fuzz();
+  v8::Handle<String> foo = v8_str("foo");
+  v8::Handle<String> message = v8_str("message");
+  v8::Handle<Value> error = v8::Exception::Error(foo);
+  CHECK(error->IsObject());
+  CHECK(error.As<v8::Object>()->Get(message)->Equals(foo));
+  info.GetIsolate()->ThrowException(error);
+  info.GetReturnValue().SetUndefined();
+}
+
+
+THREADED_TEST(ExceptionGetStackTrace) {
+  LocalContext context;
+  v8::HandleScope scope(context->GetIsolate());
+
+  v8::V8::SetCaptureStackTraceForUncaughtExceptions(true);
+
+  Local<v8::FunctionTemplate> fun =
+      v8::FunctionTemplate::New(context->GetIsolate(), ThrowV8Exception);
+  v8::Local<v8::Object> global = context->Global();
+  global->Set(v8_str("throwV8Exception"), fun->GetFunction());
+
+  TryCatch try_catch;
+  CompileRun("function f1() { throwV8Exception(); }; f1();");
+  CHECK(try_catch.HasCaught());
+
+  v8::Handle<v8::Value> error = try_catch.Exception();
+  v8::Handle<String> foo = v8_str("foo");
+  v8::Handle<String> message = v8_str("message");
+  CHECK(error->IsObject());
+  CHECK(error.As<v8::Object>()->Get(message)->Equals(foo));
+
+  v8::Handle<v8::StackTrace> stackTrace = v8::Exception::GetStackTrace(error);
+  CHECK(!stackTrace.IsEmpty());
+  CHECK_EQ(2, stackTrace->GetFrameCount());
+
+  v8::V8::SetCaptureStackTraceForUncaughtExceptions(false);
+}
+
+
 static void YGetter(Local<String> name,
                     const v8::PropertyCallbackInfo<v8::Value>& info) {
   ApiTestFuzzer::Fuzz();
@@ -9609,12 +9748,45 @@ TEST(SuperAccessControl) {
   LocalContext env;
   env->Global()->Set(v8_str("prohibited"), obj_template->NewInstance());
 
-  v8::TryCatch try_catch;
-  CompileRun(
-      "function f() { return super.hasOwnProperty; };"
-      "var m = f.toMethod(prohibited);"
-      "m();");
-  CHECK(try_catch.HasCaught());
+  {
+    v8::TryCatch try_catch;
+    CompileRun(
+        "function f() { return super.hasOwnProperty; };"
+        "var m = f.toMethod(prohibited);"
+        "m();");
+    CHECK(try_catch.HasCaught());
+  }
+
+  {
+    v8::TryCatch try_catch;
+    CompileRun(
+        "function f() { return super[42]; };"
+        "var m = f.toMethod(prohibited);"
+        "m();");
+    CHECK(try_catch.HasCaught());
+  }
+
+  {
+    v8::TryCatch try_catch;
+    CompileRun(
+        "function f() { super.hasOwnProperty = function () {}; };"
+        "var m = f.toMethod(prohibited);"
+        "m();");
+    CHECK(try_catch.HasCaught());
+  }
+
+  {
+    v8::TryCatch try_catch;
+    CompileRun(
+        "Object.defineProperty(Object.prototype, 'x', { set : function(){}});"
+        "function f() { "
+        "     'use strict';"
+        "     super.x = function () {}; "
+        "};"
+        "var m = f.toMethod(prohibited);"
+        "m();");
+    CHECK(try_catch.HasCaught());
+  }
 }
 
 
@@ -13333,6 +13505,123 @@ THREADED_TEST(ObjectProtoToString) {
 }
 
 
+TEST(ObjectProtoToStringES6) {
+  // TODO(dslomov, caitp): merge into ObjectProtoToString test once shipped.
+  i::FLAG_harmony_tostring = true;
+  LocalContext context;
+  v8::Isolate* isolate = CcTest::isolate();
+  v8::HandleScope scope(isolate);
+  Local<v8::FunctionTemplate> templ = v8::FunctionTemplate::New(isolate);
+  templ->SetClassName(v8_str("MyClass"));
+
+  Local<String> customized_tostring = v8_str("customized toString");
+
+  // Replace Object.prototype.toString
+  CompileRun(
+      "Object.prototype.toString = function() {"
+      "  return 'customized toString';"
+      "}");
+
+  // Normal ToString call should call replaced Object.prototype.toString
+  Local<v8::Object> instance = templ->GetFunction()->NewInstance();
+  Local<String> value = instance->ToString();
+  CHECK(value->IsString() && value->Equals(customized_tostring));
+
+  // ObjectProtoToString should not call replace toString function.
+  value = instance->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object MyClass]")));
+
+  // Check global
+  value = context->Global()->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object global]")));
+
+  // Check ordinary object
+  Local<Value> object = CompileRun("new Object()");
+  value = object.As<v8::Object>()->ObjectProtoToString();
+  CHECK(value->IsString() && value->Equals(v8_str("[object Object]")));
+
+  // Check that ES6 semantics using @@toStringTag work
+  Local<v8::Symbol> toStringTag = v8::Symbol::GetToStringTag(isolate);
+
+#define TEST_TOSTRINGTAG(type, tag, expected)                \
+  do {                                                       \
+    object = CompileRun("new " #type "()");                  \
+    object.As<v8::Object>()->Set(toStringTag, v8_str(#tag)); \
+    value = object.As<v8::Object>()->ObjectProtoToString();  \
+    CHECK(value->IsString() &&                               \
+          value->Equals(v8_str("[object " #expected "]")));  \
+  } while (0)
+
+  TEST_TOSTRINGTAG(Array, Object, Object);
+  TEST_TOSTRINGTAG(Object, Arguments, ~Arguments);
+  TEST_TOSTRINGTAG(Object, Array, ~Array);
+  TEST_TOSTRINGTAG(Object, Boolean, ~Boolean);
+  TEST_TOSTRINGTAG(Object, Date, ~Date);
+  TEST_TOSTRINGTAG(Object, Error, ~Error);
+  TEST_TOSTRINGTAG(Object, Function, ~Function);
+  TEST_TOSTRINGTAG(Object, Number, ~Number);
+  TEST_TOSTRINGTAG(Object, RegExp, ~RegExp);
+  TEST_TOSTRINGTAG(Object, String, ~String);
+  TEST_TOSTRINGTAG(Object, Foo, Foo);
+
+#undef TEST_TOSTRINGTAG
+
+  // @@toStringTag getter throws
+  Local<Value> obj = v8::Object::New(isolate);
+  obj.As<v8::Object>()->SetAccessor(toStringTag, ThrowingSymbolAccessorGetter);
+  {
+    TryCatch try_catch;
+    value = obj.As<v8::Object>()->ObjectProtoToString();
+    CHECK(value.IsEmpty());
+    CHECK(try_catch.HasCaught());
+  }
+
+  // @@toStringTag getter does not throw
+  obj = v8::Object::New(isolate);
+  obj.As<v8::Object>()->SetAccessor(
+      toStringTag, SymbolAccessorGetterReturnsDefault, 0, v8_str("Test"));
+  {
+    TryCatch try_catch;
+    value = obj.As<v8::Object>()->ObjectProtoToString();
+    CHECK(value->IsString() && value->Equals(v8_str("[object Test]")));
+    CHECK(!try_catch.HasCaught());
+  }
+
+  // JS @@toStringTag value
+  obj = CompileRun("obj = {}; obj[Symbol.toStringTag] = 'Test'; obj");
+  {
+    TryCatch try_catch;
+    value = obj.As<v8::Object>()->ObjectProtoToString();
+    CHECK(value->IsString() && value->Equals(v8_str("[object Test]")));
+    CHECK(!try_catch.HasCaught());
+  }
+
+  // JS @@toStringTag getter throws
+  obj = CompileRun(
+      "obj = {}; Object.defineProperty(obj, Symbol.toStringTag, {"
+      "  get: function() { throw 'Test'; }"
+      "}); obj");
+  {
+    TryCatch try_catch;
+    value = obj.As<v8::Object>()->ObjectProtoToString();
+    CHECK(value.IsEmpty());
+    CHECK(try_catch.HasCaught());
+  }
+
+  // JS @@toStringTag getter does not throw
+  obj = CompileRun(
+      "obj = {}; Object.defineProperty(obj, Symbol.toStringTag, {"
+      "  get: function() { return 'Test'; }"
+      "}); obj");
+  {
+    TryCatch try_catch;
+    value = obj.As<v8::Object>()->ObjectProtoToString();
+    CHECK(value->IsString() && value->Equals(v8_str("[object Test]")));
+    CHECK(!try_catch.HasCaught());
+  }
+}
+
+
 THREADED_TEST(ObjectGetConstructorName) {
   LocalContext context;
   v8::HandleScope scope(context->GetIsolate());
@@ -15291,7 +15580,7 @@ TEST(CompileExternalTwoByteSource) {
 #ifndef V8_INTERPRETED_REGEXP
 
 struct RegExpInterruptionData {
-  int loop_count;
+  v8::base::Atomic32 loop_count;
   UC16VectorResource* string_resource;
   v8::Persistent<v8::String> string;
 } regexp_interruption_data;
@@ -15303,9 +15592,10 @@ class RegExpInterruptionThread : public v8::base::Thread {
       : Thread(Options("TimeoutThread")), isolate_(isolate) {}
 
   virtual void Run() {
-    for (regexp_interruption_data.loop_count = 0;
-         regexp_interruption_data.loop_count < 7;
-         regexp_interruption_data.loop_count++) {
+    for (v8::base::NoBarrier_Store(&regexp_interruption_data.loop_count, 0);
+         v8::base::NoBarrier_Load(&regexp_interruption_data.loop_count) < 7;
+         v8::base::NoBarrier_AtomicIncrement(
+             &regexp_interruption_data.loop_count, 1)) {
       v8::base::OS::Sleep(50);  // Wait a bit before requesting GC.
       reinterpret_cast<i::Isolate*>(isolate_)->stack_guard()->RequestGC();
     }
@@ -15319,7 +15609,9 @@ class RegExpInterruptionThread : public v8::base::Thread {
 
 
 void RunBeforeGC(v8::GCType type, v8::GCCallbackFlags flags) {
-  if (regexp_interruption_data.loop_count != 2) return;
+  if (v8::base::NoBarrier_Load(&regexp_interruption_data.loop_count) != 2) {
+    return;
+  }
   v8::HandleScope scope(CcTest::isolate());
   v8::Local<v8::String> string = v8::Local<v8::String>::New(
       CcTest::isolate(), regexp_interruption_data.string);
@@ -17519,6 +17811,343 @@ TEST(RethrowBogusErrorStackTrace) {
 }
 
 
+v8::PromiseRejectEvent reject_event = v8::kPromiseRejectWithNoHandler;
+int promise_reject_counter = 0;
+int promise_revoke_counter = 0;
+int promise_reject_line_number = -1;
+int promise_reject_frame_count = -1;
+
+void PromiseRejectCallback(v8::PromiseRejectMessage message) {
+  if (message.GetEvent() == v8::kPromiseRejectWithNoHandler) {
+    promise_reject_counter++;
+    CcTest::global()->Set(v8_str("rejected"), message.GetPromise());
+    CcTest::global()->Set(v8_str("value"), message.GetValue());
+    v8::Handle<v8::StackTrace> stack_trace = message.GetStackTrace();
+    if (!stack_trace.IsEmpty()) {
+      promise_reject_frame_count = stack_trace->GetFrameCount();
+      if (promise_reject_frame_count > 0) {
+        CHECK(stack_trace->GetFrame(0)->GetScriptName()->Equals(v8_str("pro")));
+        promise_reject_line_number = stack_trace->GetFrame(0)->GetLineNumber();
+      } else {
+        promise_reject_line_number = -1;
+      }
+    }
+  } else {
+    promise_revoke_counter++;
+    CcTest::global()->Set(v8_str("revoked"), message.GetPromise());
+    CHECK(message.GetValue().IsEmpty());
+    CHECK(message.GetStackTrace().IsEmpty());
+  }
+}
+
+
+v8::Handle<v8::Promise> GetPromise(const char* name) {
+  return v8::Handle<v8::Promise>::Cast(CcTest::global()->Get(v8_str(name)));
+}
+
+
+v8::Handle<v8::Value> RejectValue() {
+  return CcTest::global()->Get(v8_str("value"));
+}
+
+
+void ResetPromiseStates() {
+  promise_reject_counter = 0;
+  promise_revoke_counter = 0;
+  promise_reject_line_number = -1;
+  promise_reject_frame_count = -1;
+  CcTest::global()->Set(v8_str("rejected"), v8_str(""));
+  CcTest::global()->Set(v8_str("value"), v8_str(""));
+  CcTest::global()->Set(v8_str("revoked"), v8_str(""));
+}
+
+
+TEST(PromiseRejectCallback) {
+  LocalContext env;
+  v8::Isolate* isolate = env->GetIsolate();
+  v8::HandleScope scope(isolate);
+
+  isolate->SetPromiseRejectCallback(PromiseRejectCallback);
+
+  ResetPromiseStates();
+
+  // Create promise p0.
+  CompileRun(
+      "var reject;            \n"
+      "var p0 = new Promise(  \n"
+      "  function(res, rej) { \n"
+      "    reject = rej;      \n"
+      "  }                    \n"
+      ");                     \n");
+  CHECK(!GetPromise("p0")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Add resolve handler (and default reject handler) to p0.
+  CompileRun("var p1 = p0.then(function(){});");
+  CHECK(GetPromise("p0")->HasHandler());
+  CHECK(!GetPromise("p1")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Reject p0.
+  CompileRun("reject('ppp');");
+  CHECK(GetPromise("p0")->HasHandler());
+  CHECK(!GetPromise("p1")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+  CHECK_EQ(v8::kPromiseRejectWithNoHandler, reject_event);
+  CHECK(GetPromise("rejected")->Equals(GetPromise("p1")));
+  CHECK(RejectValue()->Equals(v8_str("ppp")));
+
+  // Reject p0 again. Callback is not triggered again.
+  CompileRun("reject();");
+  CHECK(GetPromise("p0")->HasHandler());
+  CHECK(!GetPromise("p1")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Add resolve handler to p1.
+  CompileRun("var p2 = p1.then(function(){});");
+  CHECK(GetPromise("p0")->HasHandler());
+  CHECK(GetPromise("p1")->HasHandler());
+  CHECK(!GetPromise("p2")->HasHandler());
+  CHECK_EQ(2, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+  CHECK(GetPromise("rejected")->Equals(GetPromise("p2")));
+  CHECK(RejectValue()->Equals(v8_str("ppp")));
+  CHECK(GetPromise("revoked")->Equals(GetPromise("p1")));
+
+  ResetPromiseStates();
+
+  // Create promise q0.
+  CompileRun(
+      "var q0 = new Promise(  \n"
+      "  function(res, rej) { \n"
+      "    reject = rej;      \n"
+      "  }                    \n"
+      ");                     \n");
+  CHECK(!GetPromise("q0")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Add reject handler to q0.
+  CompileRun("var q1 = q0.catch(function() {});");
+  CHECK(GetPromise("q0")->HasHandler());
+  CHECK(!GetPromise("q1")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Reject q0.
+  CompileRun("reject('qq')");
+  CHECK(GetPromise("q0")->HasHandler());
+  CHECK(!GetPromise("q1")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Add a new reject handler, which rejects by returning Promise.reject().
+  // The returned promise q_ triggers a reject callback at first, only to
+  // revoke it when returning it causes q2 to be rejected.
+  CompileRun(
+      "var q_;"
+      "var q2 = q0.catch(               \n"
+      "   function() {                  \n"
+      "     q_ = Promise.reject('qqq'); \n"
+      "     return q_;                  \n"
+      "   }                             \n"
+      ");                               \n");
+  CHECK(GetPromise("q0")->HasHandler());
+  CHECK(!GetPromise("q1")->HasHandler());
+  CHECK(!GetPromise("q2")->HasHandler());
+  CHECK(GetPromise("q_")->HasHandler());
+  CHECK_EQ(2, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+  CHECK(GetPromise("rejected")->Equals(GetPromise("q2")));
+  CHECK(GetPromise("revoked")->Equals(GetPromise("q_")));
+  CHECK(RejectValue()->Equals(v8_str("qqq")));
+
+  // Add a reject handler to the resolved q1, which rejects by throwing.
+  CompileRun(
+      "var q3 = q1.then(  \n"
+      "   function() {    \n"
+      "     throw 'qqqq'; \n"
+      "   }               \n"
+      ");                 \n");
+  CHECK(GetPromise("q0")->HasHandler());
+  CHECK(GetPromise("q1")->HasHandler());
+  CHECK(!GetPromise("q2")->HasHandler());
+  CHECK(!GetPromise("q3")->HasHandler());
+  CHECK_EQ(3, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+  CHECK(GetPromise("rejected")->Equals(GetPromise("q3")));
+  CHECK(RejectValue()->Equals(v8_str("qqqq")));
+
+  ResetPromiseStates();
+
+  // Create promise r0, which has three handlers, two of which handle rejects.
+  CompileRun(
+      "var r0 = new Promise(             \n"
+      "  function(res, rej) {            \n"
+      "    reject = rej;                 \n"
+      "  }                               \n"
+      ");                                \n"
+      "var r1 = r0.catch(function() {}); \n"
+      "var r2 = r0.then(function() {});  \n"
+      "var r3 = r0.then(function() {},   \n"
+      "                 function() {});  \n");
+  CHECK(GetPromise("r0")->HasHandler());
+  CHECK(!GetPromise("r1")->HasHandler());
+  CHECK(!GetPromise("r2")->HasHandler());
+  CHECK(!GetPromise("r3")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Reject r0.
+  CompileRun("reject('rrr')");
+  CHECK(GetPromise("r0")->HasHandler());
+  CHECK(!GetPromise("r1")->HasHandler());
+  CHECK(!GetPromise("r2")->HasHandler());
+  CHECK(!GetPromise("r3")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+  CHECK(GetPromise("rejected")->Equals(GetPromise("r2")));
+  CHECK(RejectValue()->Equals(v8_str("rrr")));
+
+  // Add reject handler to r2.
+  CompileRun("var r4 = r2.catch(function() {});");
+  CHECK(GetPromise("r0")->HasHandler());
+  CHECK(!GetPromise("r1")->HasHandler());
+  CHECK(GetPromise("r2")->HasHandler());
+  CHECK(!GetPromise("r3")->HasHandler());
+  CHECK(!GetPromise("r4")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+  CHECK(GetPromise("revoked")->Equals(GetPromise("r2")));
+  CHECK(RejectValue()->Equals(v8_str("rrr")));
+
+  // Add reject handlers to r4.
+  CompileRun("var r5 = r4.then(function() {}, function() {});");
+  CHECK(GetPromise("r0")->HasHandler());
+  CHECK(!GetPromise("r1")->HasHandler());
+  CHECK(GetPromise("r2")->HasHandler());
+  CHECK(!GetPromise("r3")->HasHandler());
+  CHECK(GetPromise("r4")->HasHandler());
+  CHECK(!GetPromise("r5")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+
+  ResetPromiseStates();
+
+  // Create promise s0, which has three handlers, none of which handle rejects.
+  CompileRun(
+      "var s0 = new Promise(            \n"
+      "  function(res, rej) {           \n"
+      "    reject = rej;                \n"
+      "  }                              \n"
+      ");                               \n"
+      "var s1 = s0.then(function() {}); \n"
+      "var s2 = s0.then(function() {}); \n"
+      "var s3 = s0.then(function() {}); \n");
+  CHECK(GetPromise("s0")->HasHandler());
+  CHECK(!GetPromise("s1")->HasHandler());
+  CHECK(!GetPromise("s2")->HasHandler());
+  CHECK(!GetPromise("s3")->HasHandler());
+  CHECK_EQ(0, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+
+  // Reject s0.
+  CompileRun("reject('sss')");
+  CHECK(GetPromise("s0")->HasHandler());
+  CHECK(!GetPromise("s1")->HasHandler());
+  CHECK(!GetPromise("s2")->HasHandler());
+  CHECK(!GetPromise("s3")->HasHandler());
+  CHECK_EQ(3, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+  CHECK(RejectValue()->Equals(v8_str("sss")));
+
+  // Test stack frames.
+  V8::SetCaptureStackTraceForUncaughtExceptions(true);
+
+  ResetPromiseStates();
+
+  // Create promise t0, which is rejected in the constructor with an error.
+  CompileRunWithOrigin(
+      "var t0 = new Promise(  \n"
+      "  function(res, rej) { \n"
+      "    reference_error;   \n"
+      "  }                    \n"
+      ");                     \n",
+      "pro", 0, 0);
+  CHECK(!GetPromise("t0")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+  CHECK_EQ(2, promise_reject_frame_count);
+  CHECK_EQ(3, promise_reject_line_number);
+
+  ResetPromiseStates();
+
+  // Create promise u0 and chain u1 to it, which is rejected via throw.
+  CompileRunWithOrigin(
+      "var u0 = Promise.resolve();        \n"
+      "var u1 = u0.then(                  \n"
+      "           function() {            \n"
+      "             (function() {         \n"
+      "                throw new Error(); \n"
+      "              })();                \n"
+      "           }                       \n"
+      "         );                        \n",
+      "pro", 0, 0);
+  CHECK(GetPromise("u0")->HasHandler());
+  CHECK(!GetPromise("u1")->HasHandler());
+  CHECK_EQ(1, promise_reject_counter);
+  CHECK_EQ(0, promise_revoke_counter);
+  CHECK_EQ(2, promise_reject_frame_count);
+  CHECK_EQ(5, promise_reject_line_number);
+
+  // Throw in u3, which handles u1's rejection.
+  CompileRunWithOrigin(
+      "function f() {                \n"
+      "  return (function() {        \n"
+      "    return new Error();       \n"
+      "  })();                       \n"
+      "}                             \n"
+      "var u2 = Promise.reject(f()); \n"
+      "var u3 = u1.catch(            \n"
+      "           function() {       \n"
+      "             return u2;       \n"
+      "           }                  \n"
+      "         );                   \n",
+      "pro", 0, 0);
+  CHECK(GetPromise("u0")->HasHandler());
+  CHECK(GetPromise("u1")->HasHandler());
+  CHECK(GetPromise("u2")->HasHandler());
+  CHECK(!GetPromise("u3")->HasHandler());
+  CHECK_EQ(3, promise_reject_counter);
+  CHECK_EQ(2, promise_revoke_counter);
+  CHECK_EQ(3, promise_reject_frame_count);
+  CHECK_EQ(3, promise_reject_line_number);
+
+  ResetPromiseStates();
+
+  // Create promise rejected promise v0, which is incorrectly handled by v1
+  // via chaining cycle.
+  CompileRunWithOrigin(
+      "var v0 = Promise.reject(); \n"
+      "var v1 = v0.catch(         \n"
+      "           function() {    \n"
+      "             return v1;    \n"
+      "           }               \n"
+      "         );                \n",
+      "pro", 0, 0);
+  CHECK(GetPromise("v0")->HasHandler());
+  CHECK(!GetPromise("v1")->HasHandler());
+  CHECK_EQ(2, promise_reject_counter);
+  CHECK_EQ(1, promise_revoke_counter);
+  CHECK_EQ(0, promise_reject_frame_count);
+  CHECK_EQ(-1, promise_reject_line_number);
+}
+
+
 void AnalyzeStackOfEvalWithSourceURL(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope scope(args.GetIsolate());
@@ -17831,40 +18460,6 @@ TEST(IdleNotificationWithLargeHint) {
   }
   intptr_t final_size = CcTest::heap()->SizeOfObjects();
   CHECK(finished);
-  CHECK_LT(final_size, initial_size + 1);
-}
-
-
-TEST(Regress2107) {
-  const intptr_t MB = 1024 * 1024;
-  const int kIdlePauseInMs = 1000;
-  LocalContext env;
-  v8::Isolate* isolate = env->GetIsolate();
-  v8::HandleScope scope(env->GetIsolate());
-  intptr_t initial_size = CcTest::heap()->SizeOfObjects();
-  // Send idle notification to start a round of incremental GCs.
-  env->GetIsolate()->IdleNotification(kIdlePauseInMs);
-  // Emulate 7 page reloads.
-  for (int i = 0; i < 7; i++) {
-    {
-      v8::HandleScope inner_scope(env->GetIsolate());
-      v8::Local<v8::Context> ctx = v8::Context::New(isolate);
-      ctx->Enter();
-      CreateGarbageInOldSpace();
-      ctx->Exit();
-    }
-    env->GetIsolate()->ContextDisposedNotification();
-    env->GetIsolate()->IdleNotification(kIdlePauseInMs);
-  }
-  // Create garbage and check that idle notification still collects it.
-  CreateGarbageInOldSpace();
-  intptr_t size_with_garbage = CcTest::heap()->SizeOfObjects();
-  CHECK_GT(size_with_garbage, initial_size + MB);
-  bool finished = false;
-  for (int i = 0; i < 200 && !finished; i++) {
-    finished = env->GetIsolate()->IdleNotification(kIdlePauseInMs);
-  }
-  intptr_t final_size = CcTest::heap()->SizeOfObjects();
   CHECK_LT(final_size, initial_size + 1);
 }
 
@@ -19860,7 +20455,7 @@ TEST(PersistentHandleVisitor) {
   CHECK_EQ(42, object.WrapperClassId());
 
   Visitor42 visitor(&object);
-  v8::V8::VisitHandlesWithClassIds(&visitor);
+  v8::V8::VisitHandlesWithClassIds(isolate, &visitor);
   CHECK_EQ(1, visitor.counter_);
 
   object.Reset();
@@ -22606,6 +23201,7 @@ TEST(Promises) {
   Handle<v8::Promise::Resolver> rr = v8::Promise::Resolver::New(isolate);
   Handle<v8::Promise> p = pr->GetPromise();
   Handle<v8::Promise> r = rr->GetPromise();
+  CHECK_EQ(isolate, p->GetIsolate());
 
   // IsPromise predicate.
   CHECK(p->IsPromise());
@@ -23170,14 +23766,14 @@ TEST(StreamingScriptWithParseError) {
 
 
 TEST(StreamingUtf8Script) {
-  // We'd want to write \uc481 instead of \xeb\x91\x80, but Windows compilers
+  // We'd want to write \uc481 instead of \xec\x92\x81, but Windows compilers
   // don't like it.
   const char* chunk1 =
       "function foo() {\n"
       "  // This function will contain an UTF-8 character which is not in\n"
       "  // ASCII.\n"
-      "  var foob\xeb\x91\x80r = 13;\n"
-      "  return foob\xeb\x91\x80r;\n"
+      "  var foob\xec\x92\x81r = 13;\n"
+      "  return foob\xec\x92\x81r;\n"
       "}\n";
   const char* chunks[] = {chunk1, "foo(); ", NULL};
   RunStreamingTest(chunks, v8::ScriptCompiler::StreamedSource::UTF8);
@@ -23188,7 +23784,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersSanityCheck) {
   // A sanity check to prove that the approach of splitting UTF-8
   // characters is correct. Here is an UTF-8 character which will take three
   // bytes.
-  const char* reference = "\xeb\x91\x80";
+  const char* reference = "\xec\x92\x81";
   CHECK(3u == strlen(reference));  // NOLINT - no CHECK_EQ for unsigned.
 
   char chunk1[] =
@@ -23198,7 +23794,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersSanityCheck) {
       "  var foob";
   char chunk2[] =
       "XXXr = 13;\n"
-      "  return foob\xeb\x91\x80r;\n"
+      "  return foob\xec\x92\x81r;\n"
       "}\n";
   for (int i = 0; i < 3; ++i) {
     chunk2[i] = reference[i];
@@ -23211,7 +23807,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersSanityCheck) {
 TEST(StreamingUtf8ScriptWithSplitCharacters) {
   // Stream data where a multi-byte UTF-8 character is split between two data
   // chunks.
-  const char* reference = "\xeb\x91\x80";
+  const char* reference = "\xec\x92\x81";
   char chunk1[] =
       "function foo() {\n"
       "  // This function will contain an UTF-8 character which is not in\n"
@@ -23219,7 +23815,7 @@ TEST(StreamingUtf8ScriptWithSplitCharacters) {
       "  var foobX";
   char chunk2[] =
       "XXr = 13;\n"
-      "  return foob\xeb\x91\x80r;\n"
+      "  return foob\xec\x92\x81r;\n"
       "}\n";
   chunk1[strlen(chunk1) - 1] = reference[0];
   chunk2[0] = reference[1];
@@ -23235,7 +23831,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersValidEdgeCases) {
   // Case 1: a chunk contains only bytes for a split character (and no other
   // data). This kind of a chunk would be exceptionally small, but we should
   // still decode it correctly.
-  const char* reference = "\xeb\x91\x80";
+  const char* reference = "\xec\x92\x81";
   // The small chunk is at the beginning of the split character
   {
     char chunk1[] =
@@ -23246,7 +23842,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersValidEdgeCases) {
     char chunk2[] = "XX";
     char chunk3[] =
         "Xr = 13;\n"
-        "  return foob\xeb\x91\x80r;\n"
+        "  return foob\xec\x92\x81r;\n"
         "}\n";
     chunk2[0] = reference[0];
     chunk2[1] = reference[1];
@@ -23264,7 +23860,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersValidEdgeCases) {
     char chunk2[] = "XX";
     char chunk3[] =
         "r = 13;\n"
-        "  return foob\xeb\x91\x80r;\n"
+        "  return foob\xec\x92\x81r;\n"
         "}\n";
     chunk1[strlen(chunk1) - 1] = reference[0];
     chunk2[0] = reference[1];
@@ -23276,8 +23872,8 @@ TEST(StreamingUtf8ScriptWithSplitCharactersValidEdgeCases) {
   // decoded correctly and not just ignored.
   {
     char chunk1[] =
-        "var foob\xeb\x91\x80 = 13;\n"
-        "foob\xeb\x91\x80";
+        "var foob\xec\x92\x81 = 13;\n"
+        "foob\xec\x92\x81";
     const char* chunks[] = {chunk1, NULL};
     RunStreamingTest(chunks, v8::ScriptCompiler::StreamedSource::UTF8);
   }
@@ -23288,7 +23884,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersInvalidEdgeCases) {
   // Test cases where a UTF-8 character is split over several chunks. Those
   // cases are not supported (the embedder should give the data in big enough
   // chunks), but we shouldn't crash, just produce a parse error.
-  const char* reference = "\xeb\x91\x80";
+  const char* reference = "\xec\x92\x81";
   char chunk1[] =
       "function foo() {\n"
       "  // This function will contain an UTF-8 character which is not in\n"
@@ -23297,7 +23893,7 @@ TEST(StreamingUtf8ScriptWithSplitCharactersInvalidEdgeCases) {
   char chunk2[] = "X";
   char chunk3[] =
       "Xr = 13;\n"
-      "  return foob\xeb\x91\x80r;\n"
+      "  return foob\xec\x92\x81r;\n"
       "}\n";
   chunk1[strlen(chunk1) - 1] = reference[0];
   chunk2[0] = reference[1];
@@ -23333,4 +23929,66 @@ TEST(StreamingProducesParserCache) {
   CHECK(cached_data != NULL);
   CHECK(cached_data->data != NULL);
   CHECK_GT(cached_data->length, 0);
+}
+
+
+TEST(StreamingScriptWithInvalidUtf8) {
+  // Regression test for a crash: test that invalid UTF-8 bytes in the end of a
+  // chunk don't produce a crash.
+  const char* reference = "\xec\x92\x81\x80\x80";
+  char chunk1[] =
+      "function foo() {\n"
+      "  // This function will contain an UTF-8 character which is not in\n"
+      "  // ASCII.\n"
+      "  var foobXXXXX";  // Too many bytes which look like incomplete chars!
+  char chunk2[] =
+      "r = 13;\n"
+      "  return foob\xec\x92\x81\x80\x80r;\n"
+      "}\n";
+  for (int i = 0; i < 5; ++i) chunk1[strlen(chunk1) - 5 + i] = reference[i];
+
+  const char* chunks[] = {chunk1, chunk2, "foo();", NULL};
+  RunStreamingTest(chunks, v8::ScriptCompiler::StreamedSource::UTF8, false);
+}
+
+
+TEST(StreamingUtf8ScriptWithMultipleMultibyteCharactersSomeSplit) {
+  // Regression test: Stream data where there are several multi-byte UTF-8
+  // characters in a sequence and one of them is split between two data chunks.
+  const char* reference = "\xec\x92\x81";
+  char chunk1[] =
+      "function foo() {\n"
+      "  // This function will contain an UTF-8 character which is not in\n"
+      "  // ASCII.\n"
+      "  var foob\xec\x92\x81X";
+  char chunk2[] =
+      "XXr = 13;\n"
+      "  return foob\xec\x92\x81\xec\x92\x81r;\n"
+      "}\n";
+  chunk1[strlen(chunk1) - 1] = reference[0];
+  chunk2[0] = reference[1];
+  chunk2[1] = reference[2];
+  const char* chunks[] = {chunk1, chunk2, "foo();", NULL};
+  RunStreamingTest(chunks, v8::ScriptCompiler::StreamedSource::UTF8);
+}
+
+
+TEST(StreamingUtf8ScriptWithMultipleMultibyteCharactersSomeSplit2) {
+  // Another regression test, similar to the previous one. The difference is
+  // that the split character is not the last one in the sequence.
+  const char* reference = "\xec\x92\x81";
+  char chunk1[] =
+      "function foo() {\n"
+      "  // This function will contain an UTF-8 character which is not in\n"
+      "  // ASCII.\n"
+      "  var foobX";
+  char chunk2[] =
+      "XX\xec\x92\x81r = 13;\n"
+      "  return foob\xec\x92\x81\xec\x92\x81r;\n"
+      "}\n";
+  chunk1[strlen(chunk1) - 1] = reference[0];
+  chunk2[0] = reference[1];
+  chunk2[1] = reference[2];
+  const char* chunks[] = {chunk1, chunk2, "foo();", NULL};
+  RunStreamingTest(chunks, v8::ScriptCompiler::StreamedSource::UTF8);
 }

@@ -25,7 +25,7 @@ class Graph;
 // of function inlining.
 class AstGraphBuilder : public StructuredGraphBuilder, public AstVisitor {
  public:
-  AstGraphBuilder(CompilationInfo* info, JSGraph* jsgraph);
+  AstGraphBuilder(Zone* local_zone, CompilationInfo* info, JSGraph* jsgraph);
 
   // Creates a graph by visiting the entire AST.
   bool CreateGraph();
@@ -80,8 +80,10 @@ class AstGraphBuilder : public StructuredGraphBuilder, public AstVisitor {
   // Builders for variable load and assignment.
   Node* BuildVariableAssignment(Variable* var, Node* value, Token::Value op,
                                 BailoutId bailout_id);
-  Node* BuildVariableDelete(Variable* var);
+  Node* BuildVariableDelete(Variable* var, BailoutId bailout_id,
+                            OutputFrameStateCombine state_combine);
   Node* BuildVariableLoad(Variable* var, BailoutId bailout_id,
+                          const VectorSlotPair& feedback,
                           ContextualMode mode = CONTEXTUAL);
 
   // Builders for accessing the function context.
@@ -94,14 +96,18 @@ class AstGraphBuilder : public StructuredGraphBuilder, public AstVisitor {
   Node* BuildToBoolean(Node* value);
 
   // Builders for error reporting at runtime.
-  Node* BuildThrowReferenceError(Variable* var);
+  Node* BuildThrowReferenceError(Variable* var, BailoutId bailout_id);
 
   // Builders for dynamic hole-checks at runtime.
   Node* BuildHoleCheckSilent(Node* value, Node* for_hole, Node* not_hole);
-  Node* BuildHoleCheckThrow(Node* value, Variable* var, Node* not_hole);
+  Node* BuildHoleCheckThrow(Node* value, Variable* var, Node* not_hole,
+                            BailoutId bailout_id);
 
   // Builders for binary operations.
   Node* BuildBinaryOp(Node* left, Node* right, Token::Value op);
+
+  // Builder for stack-check guards.
+  Node* BuildStackCheck();
 
 #define DECLARE_VISIT(type) virtual void Visit##type(type* node);
   // Visiting functions for AST nodes make this an AstVisitor.
@@ -129,14 +135,17 @@ class AstGraphBuilder : public StructuredGraphBuilder, public AstVisitor {
   SetOncePointer<Node> function_closure_;
   SetOncePointer<Node> function_context_;
 
-  CompilationInfo* info() { return info_; }
-  StrictMode strict_mode() { return info()->strict_mode(); }
+  CompilationInfo* info() const { return info_; }
+  inline StrictMode strict_mode() const;
   JSGraph* jsgraph() { return jsgraph_; }
   JSOperatorBuilder* javascript() { return jsgraph_->javascript(); }
   ZoneList<Handle<Object> >* globals() { return &globals_; }
 
   // Current scope during visitation.
   inline Scope* current_scope() const;
+
+  // Named and keyed loads require a VectorSlotPair for successful lowering.
+  VectorSlotPair CreateVectorSlotPair(FeedbackVectorICSlot slot) const;
 
   // Process arguments to a call by popping {arity} elements off the operand
   // stack and build a call node using the given call operator.
@@ -173,8 +182,9 @@ class AstGraphBuilder : public StructuredGraphBuilder, public AstVisitor {
   void VisitForInAssignment(Expression* expr, Node* value);
 
   // Builds deoptimization for a given node.
-  void PrepareFrameState(Node* node, BailoutId ast_id,
-                         OutputFrameStateCombine combine = kIgnoreOutput);
+  void PrepareFrameState(
+      Node* node, BailoutId ast_id,
+      OutputFrameStateCombine combine = OutputFrameStateCombine::Ignore());
 
   OutputFrameStateCombine StateCombineFromAstContext();
 
@@ -288,7 +298,8 @@ class AstGraphBuilder::AstContext BASE_EMBEDDED {
   // Determines how to combine the frame state with the value
   // that is about to be plugged into this AstContext.
   OutputFrameStateCombine GetStateCombine() {
-    return IsEffect() ? kIgnoreOutput : kPushOutput;
+    return IsEffect() ? OutputFrameStateCombine::Ignore()
+                      : OutputFrameStateCombine::Push();
   }
 
   // Plug a node into this expression context.  Call this function in tail

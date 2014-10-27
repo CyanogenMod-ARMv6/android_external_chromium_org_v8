@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <sstream>
+
 #include "src/v8.h"
 
 #if V8_TARGET_ARCH_X87
@@ -376,9 +378,9 @@ LOperand* LPlatformChunk::GetNextSpillSlot(RegisterKind kind) {
 
 void LStoreNamedField::PrintDataTo(StringStream* stream) {
   object()->PrintTo(stream);
-  OStringStream os;
+  std::ostringstream os;
   os << hydrogen()->access() << " <- ";
-  stream->Add(os.c_str());
+  stream->Add(os.str().c_str());
   value()->PrintTo(stream);
 }
 
@@ -469,12 +471,6 @@ LPlatformChunk* LChunkBuilder::Build() {
   }
   status_ = DONE;
   return chunk_;
-}
-
-
-void LChunkBuilder::Abort(BailoutReason reason) {
-  info()->set_bailout_reason(reason);
-  status_ = ABORTED;
 }
 
 
@@ -742,11 +738,7 @@ LInstruction* LChunkBuilder::DoShift(Token::Value op,
     // Shift operations can only deoptimize if we do a logical shift by 0 and
     // the result cannot be truncated to int32.
     if (op == Token::SHR && constant_value == 0) {
-      if (FLAG_opt_safe_uint32_operations) {
-        does_deopt = !instr->CheckFlag(HInstruction::kUint32);
-      } else {
-        does_deopt = !instr->CheckUsesForFlag(HValue::kTruncatingToInt32);
-      }
+      does_deopt = !instr->CheckFlag(HInstruction::kUint32);
     }
 
     LInstruction* result =
@@ -1258,8 +1250,10 @@ LInstruction* LChunkBuilder::DoMathExp(HUnaryMathOperation* instr) {
 
 LInstruction* LChunkBuilder::DoMathSqrt(HUnaryMathOperation* instr) {
   LOperand* input = UseRegisterAtStart(instr->value());
-  LMathSqrt* result = new(zone()) LMathSqrt(input);
-  return DefineSameAsFirst(result);
+  LOperand* temp1 = FixedTemp(ecx);
+  LOperand* temp2 = FixedTemp(edx);
+  LMathSqrt* result = new(zone()) LMathSqrt(input, temp1, temp2);
+  return MarkAsCall(DefineSameAsFirst(result), instr);
 }
 
 
@@ -2534,7 +2528,7 @@ LInstruction* LChunkBuilder::DoUnknownOSRValue(HUnknownOSRValue* instr) {
   } else {
     spill_index = env_index - instr->environment()->first_local_index();
     if (spill_index > LUnallocated::kMaxFixedSlotIndex) {
-      Abort(kNotEnoughSpillSlotsForOsr);
+      Retry(kNotEnoughSpillSlotsForOsr);
       spill_index = 0;
     }
     if (spill_index == 0) {

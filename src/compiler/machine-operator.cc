@@ -12,8 +12,8 @@ namespace v8 {
 namespace internal {
 namespace compiler {
 
-OStream& operator<<(OStream& os, const WriteBarrierKind& write_barrier_kind) {
-  switch (write_barrier_kind) {
+std::ostream& operator<<(std::ostream& os, WriteBarrierKind kind) {
+  switch (kind) {
     case kNoWriteBarrier:
       return os << "NoWriteBarrier";
     case kFullWriteBarrier:
@@ -24,37 +24,32 @@ OStream& operator<<(OStream& os, const WriteBarrierKind& write_barrier_kind) {
 }
 
 
-OStream& operator<<(OStream& os, const StoreRepresentation& rep) {
+bool operator==(StoreRepresentation lhs, StoreRepresentation rhs) {
+  return lhs.machine_type() == rhs.machine_type() &&
+         lhs.write_barrier_kind() == rhs.write_barrier_kind();
+}
+
+
+bool operator!=(StoreRepresentation lhs, StoreRepresentation rhs) {
+  return !(lhs == rhs);
+}
+
+
+size_t hash_value(StoreRepresentation rep) {
+  return base::hash_combine(rep.machine_type(), rep.write_barrier_kind());
+}
+
+
+std::ostream& operator<<(std::ostream& os, StoreRepresentation rep) {
   return os << "(" << rep.machine_type() << " : " << rep.write_barrier_kind()
             << ")";
 }
 
 
-template <>
-struct StaticParameterTraits<StoreRepresentation> {
-  static OStream& PrintTo(OStream& os, const StoreRepresentation& rep) {
-    return os << rep;
-  }
-  static int HashCode(const StoreRepresentation& rep) {
-    return rep.machine_type() + rep.write_barrier_kind();
-  }
-  static bool Equals(const StoreRepresentation& rep1,
-                     const StoreRepresentation& rep2) {
-    return rep1 == rep2;
-  }
-};
-
-
-template <>
-struct StaticParameterTraits<LoadRepresentation> {
-  static OStream& PrintTo(OStream& os, LoadRepresentation type) {  // NOLINT
-    return os << type;
-  }
-  static int HashCode(LoadRepresentation type) { return type; }
-  static bool Equals(LoadRepresentation lhs, LoadRepresentation rhs) {
-    return lhs == rhs;
-  }
-};
+StoreRepresentation const& StoreRepresentationOf(Operator const* op) {
+  DCHECK_EQ(IrOpcode::kStore, op->opcode());
+  return OpParameter<StoreRepresentation>(op);
+}
 
 
 #define PURE_OP_LIST(V)                                                       \
@@ -80,23 +75,25 @@ struct StaticParameterTraits<LoadRepresentation> {
   V(Int32Sub, Operator::kNoProperties, 2, 1)                                  \
   V(Int32SubWithOverflow, Operator::kNoProperties, 2, 2)                      \
   V(Int32Mul, Operator::kAssociative | Operator::kCommutative, 2, 1)          \
+  V(Int32MulHigh, Operator::kAssociative | Operator::kCommutative, 2, 1)      \
   V(Int32Div, Operator::kNoProperties, 2, 1)                                  \
-  V(Int32UDiv, Operator::kNoProperties, 2, 1)                                 \
   V(Int32Mod, Operator::kNoProperties, 2, 1)                                  \
-  V(Int32UMod, Operator::kNoProperties, 2, 1)                                 \
   V(Int32LessThan, Operator::kNoProperties, 2, 1)                             \
   V(Int32LessThanOrEqual, Operator::kNoProperties, 2, 1)                      \
+  V(Uint32Div, Operator::kNoProperties, 2, 1)                                 \
   V(Uint32LessThan, Operator::kNoProperties, 2, 1)                            \
   V(Uint32LessThanOrEqual, Operator::kNoProperties, 2, 1)                     \
+  V(Uint32Mod, Operator::kNoProperties, 2, 1)                                 \
   V(Int64Add, Operator::kAssociative | Operator::kCommutative, 2, 1)          \
   V(Int64Sub, Operator::kNoProperties, 2, 1)                                  \
   V(Int64Mul, Operator::kAssociative | Operator::kCommutative, 2, 1)          \
   V(Int64Div, Operator::kNoProperties, 2, 1)                                  \
-  V(Int64UDiv, Operator::kNoProperties, 2, 1)                                 \
   V(Int64Mod, Operator::kNoProperties, 2, 1)                                  \
-  V(Int64UMod, Operator::kNoProperties, 2, 1)                                 \
   V(Int64LessThan, Operator::kNoProperties, 2, 1)                             \
   V(Int64LessThanOrEqual, Operator::kNoProperties, 2, 1)                      \
+  V(Uint64Div, Operator::kNoProperties, 2, 1)                                 \
+  V(Uint64LessThan, Operator::kNoProperties, 2, 1)                            \
+  V(Uint64Mod, Operator::kNoProperties, 2, 1)                                 \
   V(ChangeFloat32ToFloat64, Operator::kNoProperties, 1, 1)                    \
   V(ChangeFloat64ToInt32, Operator::kNoProperties, 1, 1)                      \
   V(ChangeFloat64ToUint32, Operator::kNoProperties, 1, 1)                     \
@@ -113,9 +110,14 @@ struct StaticParameterTraits<LoadRepresentation> {
   V(Float64Div, Operator::kNoProperties, 2, 1)                                \
   V(Float64Mod, Operator::kNoProperties, 2, 1)                                \
   V(Float64Sqrt, Operator::kNoProperties, 1, 1)                               \
+  V(Float64Ceil, Operator::kNoProperties, 1, 1)                               \
+  V(Float64Floor, Operator::kNoProperties, 1, 1)                              \
+  V(Float64RoundTruncate, Operator::kNoProperties, 1, 1)                      \
+  V(Float64RoundTiesAway, Operator::kNoProperties, 1, 1)                      \
   V(Float64Equal, Operator::kCommutative, 2, 1)                               \
   V(Float64LessThan, Operator::kNoProperties, 2, 1)                           \
-  V(Float64LessThanOrEqual, Operator::kNoProperties, 2, 1)
+  V(Float64LessThanOrEqual, Operator::kNoProperties, 2, 1)                    \
+  V(LoadStackPointer, Operator::kNoProperties, 0, 1)
 
 
 #define MACHINE_TYPE_LIST(V) \
@@ -190,8 +192,8 @@ static base::LazyInstance<MachineOperatorBuilderImpl>::type kImpl =
     LAZY_INSTANCE_INITIALIZER;
 
 
-MachineOperatorBuilder::MachineOperatorBuilder(MachineType word)
-    : impl_(kImpl.Get()), word_(word) {
+MachineOperatorBuilder::MachineOperatorBuilder(MachineType word, Flags flags)
+    : impl_(kImpl.Get()), word_(word), flags_(flags) {
   DCHECK(word == kRepWord32 || word == kRepWord64);
 }
 
@@ -238,7 +240,6 @@ const Operator* MachineOperatorBuilder::Store(StoreRepresentation rep) {
   UNREACHABLE();
   return NULL;
 }
-
 }  // namespace compiler
 }  // namespace internal
 }  // namespace v8

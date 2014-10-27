@@ -594,32 +594,6 @@ void KeyedLoadIC::GenerateGeneric(MacroAssembler* masm) {
 }
 
 
-void KeyedLoadIC::GenerateString(MacroAssembler* masm) {
-  // Return address is in ra.
-  Label miss;
-
-  Register receiver = LoadDescriptor::ReceiverRegister();
-  Register index = LoadDescriptor::NameRegister();
-  Register scratch = a3;
-  Register result = v0;
-  DCHECK(!scratch.is(receiver) && !scratch.is(index));
-
-  StringCharAtGenerator char_at_generator(receiver, index, scratch, result,
-                                          &miss,  // When not a string.
-                                          &miss,  // When not a number.
-                                          &miss,  // When index out of range.
-                                          STRING_INDEX_IS_ARRAY_INDEX);
-  char_at_generator.GenerateFast(masm);
-  __ Ret();
-
-  StubRuntimeCallHelper call_helper;
-  char_at_generator.GenerateSlow(masm, call_helper);
-
-  __ bind(&miss);
-  GenerateMiss(masm);
-}
-
-
 static void KeyedStoreGenerateGenericHelper(
     MacroAssembler* masm, Label* fast_object, Label* fast_double, Label* slow,
     KeyedStoreCheckMap check_map, KeyedStoreIncrementLength increment_length,
@@ -766,8 +740,9 @@ static void KeyedStoreGenerateGenericHelper(
 }
 
 
-void KeyedStoreIC::GenerateGeneric(MacroAssembler* masm,
-                                   StrictMode strict_mode) {
+void KeyedStoreIC::GenerateGeneric(
+    MacroAssembler* masm, StrictMode strict_mode,
+    KeyedStoreStubCacheRequirement handler_requirement) {
   // ---------- S t a t e --------------
   //  -- a0     : value
   //  -- a1     : key
@@ -776,7 +751,7 @@ void KeyedStoreIC::GenerateGeneric(MacroAssembler* masm,
   // -----------------------------------
   Label slow, fast_object, fast_object_grow;
   Label fast_double, fast_double_grow;
-  Label array, extra, check_if_double_array;
+  Label array, extra, check_if_double_array, maybe_name_key, miss;
 
   // Register usage.
   Register value = StoreDescriptor::ValueRegister();
@@ -789,7 +764,7 @@ void KeyedStoreIC::GenerateGeneric(MacroAssembler* masm,
   // t0 and t1 are used as general scratch registers.
 
   // Check that the key is a smi.
-  __ JumpIfNotSmi(key, &slow);
+  __ JumpIfNotSmi(key, &maybe_name_key);
   // Check that the object isn't a smi.
   __ JumpIfSmi(receiver, &slow);
   // Get the map of the object.
@@ -819,6 +794,23 @@ void KeyedStoreIC::GenerateGeneric(MacroAssembler* masm,
   // a1: key.
   // a2: receiver.
   PropertyICCompiler::GenerateRuntimeSetProperty(masm, strict_mode);
+  // Never returns to here.
+
+  __ bind(&maybe_name_key);
+  __ lw(t0, FieldMemOperand(key, HeapObject::kMapOffset));
+  __ lb(t0, FieldMemOperand(t0, Map::kInstanceTypeOffset));
+  __ JumpIfNotUniqueNameInstanceType(t0, &slow);
+  Code::Flags flags = Code::RemoveTypeAndHolderFromFlags(
+      Code::ComputeHandlerFlags(Code::STORE_IC));
+  masm->isolate()->stub_cache()->GenerateProbe(masm, flags, false, receiver,
+                                               key, a3, t0, t1, t2);
+  // Cache miss.
+  if (handler_requirement == kCallRuntimeOnMissingHandler) {
+    __ Branch(&slow);
+  } else {
+    DCHECK(handler_requirement == kMissOnMissingHandler);
+    __ Branch(&miss);
+  }
 
   // Extra capacity case: Check if there is extra capacity to
   // perform the store and update the length. Used for adding one
@@ -858,6 +850,9 @@ void KeyedStoreIC::GenerateGeneric(MacroAssembler* masm,
                                   &slow, kDontCheckMap, kIncrementLength, value,
                                   key, receiver, receiver_map, elements_map,
                                   elements);
+
+  __ bind(&miss);
+  GenerateMiss(masm);
 }
 
 
