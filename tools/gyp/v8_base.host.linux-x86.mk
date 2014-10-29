@@ -53,6 +53,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compilation-statistics.cc \
 	v8/src/compiler/access-builder.cc \
 	v8/src/compiler/ast-graph-builder.cc \
+	v8/src/compiler/ast-loop-assignment-analyzer.cc \
 	v8/src/compiler/basic-block-instrumentor.cc \
 	v8/src/compiler/change-lowering.cc \
 	v8/src/compiler/code-generator.cc \
