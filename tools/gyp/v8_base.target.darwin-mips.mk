@@ -81,7 +81,6 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/machine-operator.cc \
 	v8/src/compiler/machine-type.cc \
 	v8/src/compiler/node-cache.cc \
-	v8/src/compiler/node-matchers.cc \
 	v8/src/compiler/node.cc \
 	v8/src/compiler/operator.cc \
 	v8/src/compiler/pipeline.cc \
