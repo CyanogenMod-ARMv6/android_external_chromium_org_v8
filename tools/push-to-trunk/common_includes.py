@@ -400,12 +400,15 @@ class GitTagsOnlyMixin(VCInterface):
       return "origin/%s" % name
     return "branch-heads/%s" % name
 
+  def PushRef(self, ref):
+    self.step.Git("push origin %s" % ref)
+
   def Tag(self, tag, remote, message):
     # Wait for the commit to appear. Assumes unique commit message titles (this
     # is the case for all automated merge and push commits - also no title is
     # the prefix of another title).
     commit = None
-    for wait_interval in [3, 7, 15, 35]:
+    for wait_interval in [3, 7, 15, 35, 35]:
       self.step.Git("fetch")
       commit = self.step.GitLog(n=1, format="%H", grep=message, branch=remote)
       if commit:
@@ -418,16 +421,40 @@ class GitTagsOnlyMixin(VCInterface):
                     "git updater is lagging behind?")
 
     self.step.Git("tag %s %s" % (tag, commit))
-    self.step.Git("push origin %s" % tag)
+    self.PushRef(tag)
 
 
 class GitReadSvnWriteInterface(GitTagsOnlyMixin, GitSvnInterface):
   pass
 
 
+class GitInterface(GitTagsOnlyMixin):
+  def Fetch(self):
+    self.step.Git("fetch")
+
+  def GitSvn(self, hsh, branch=""):
+    return ""
+
+  def SvnGit(self, rev, branch=""):
+    raise NotImplementedError()
+
+  def Land(self):
+    # FIXME(machenbach): This will not work with checkouts from bot_update
+    # after flag day because it will push to the cache. Investigate if it
+    # will work with "cl land".
+    self.step.Git("push origin")
+
+  def CLLand(self):
+    self.step.GitCLLand()
+
+  def PushRef(self, ref):
+    self.step.Git("push https://chromium.googlesource.com/v8/v8 %s" % ref)
+
+
 VC_INTERFACES = {
   "git_svn": GitSvnInterface,
   "git_read_svn_write": GitReadSvnWriteInterface,
+  "git": GitInterface,
 }
 
 
@@ -708,6 +735,8 @@ class Step(GitRecipesMixin):
                         (root, self._config["PATCH_FILE"]),
                         cwd=self._options.svn):
       self.Die("Could not apply patch.")
+    # Recursively add possibly newly added files.
+    self.Command("svn", "add --force %s" % root, cwd=self._options.svn)
     self.Command(
         "svn",
         "commit --non-interactive --username=%s --config-dir=%s -m \"%s\"" %
