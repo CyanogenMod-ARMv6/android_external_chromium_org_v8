@@ -40,6 +40,7 @@ LOCAL_SRC_FILES := \
 	v8/src/basic-block-profiler.cc \
 	v8/src/bignum-dtoa.cc \
 	v8/src/bignum.cc \
+	v8/src/bit-vector.cc \
 	v8/src/bootstrapper.cc \
 	v8/src/builtins.cc \
 	v8/src/cached-powers.cc \
@@ -102,7 +103,6 @@ LOCAL_SRC_FILES := \
 	v8/src/conversions.cc \
 	v8/src/counters.cc \
 	v8/src/cpu-profiler.cc \
-	v8/src/data-flow.cc \
 	v8/src/date.cc \
 	v8/src/dateparser.cc \
 	v8/src/debug.cc \
