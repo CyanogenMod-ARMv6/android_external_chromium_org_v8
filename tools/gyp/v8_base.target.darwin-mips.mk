@@ -90,6 +90,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/register-allocator.cc \
 	v8/src/compiler/schedule.cc \
 	v8/src/compiler/scheduler.cc \
+	v8/src/compiler/select-lowering.cc \
 	v8/src/compiler/simplified-lowering.cc \
 	v8/src/compiler/simplified-operator-reducer.cc \
 	v8/src/compiler/simplified-operator.cc \
