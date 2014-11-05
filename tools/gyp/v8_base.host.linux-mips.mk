@@ -88,6 +88,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/pipeline-statistics.cc \
 	v8/src/compiler/raw-machine-assembler.cc \
 	v8/src/compiler/register-allocator.cc \
+	v8/src/compiler/register-configuration.cc \
 	v8/src/compiler/schedule.cc \
 	v8/src/compiler/scheduler.cc \
 	v8/src/compiler/select-lowering.cc \
