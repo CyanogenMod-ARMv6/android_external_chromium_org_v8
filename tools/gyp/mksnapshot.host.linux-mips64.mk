@@ -247,6 +247,7 @@ LOCAL_STATIC_LIBRARIES := \
 # Enable grouping to fix circular references
 LOCAL_GROUP_STATIC_LIBRARIES := true
 ### Set directly by aosp_build_settings.
+LOCAL_CXX_STL := libstdc++
 LOCAL_CLANG := true
 
 # Add target alias to "gyp_all_modules" target.

@@ -46,6 +46,7 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(GYP_TARGET_DEPENDENCIES) $(GYP_GENERATED_OUTP
 
 ### Rules for final target.
 ### Set directly by aosp_build_settings.
+LOCAL_CXX_STL := libstdc++
 LOCAL_CLANG := true
 
 # Add target alias to "gyp_all_modules" target.
