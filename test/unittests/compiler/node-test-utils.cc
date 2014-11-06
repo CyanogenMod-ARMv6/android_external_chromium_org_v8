@@ -208,6 +208,52 @@ class IsConstantMatcher FINAL : public NodeMatcher {
 };
 
 
+class IsSelectMatcher FINAL : public NodeMatcher {
+ public:
+  IsSelectMatcher(const Matcher<MachineType>& type_matcher,
+                  const Matcher<Node*>& value0_matcher,
+                  const Matcher<Node*>& value1_matcher,
+                  const Matcher<Node*>& value2_matcher)
+      : NodeMatcher(IrOpcode::kSelect),
+        type_matcher_(type_matcher),
+        value0_matcher_(value0_matcher),
+        value1_matcher_(value1_matcher),
+        value2_matcher_(value2_matcher) {}
+
+  virtual void DescribeTo(std::ostream* os) const OVERRIDE {
+    NodeMatcher::DescribeTo(os);
+    *os << " whose type (";
+    type_matcher_.DescribeTo(os);
+    *os << "), value0 (";
+    value0_matcher_.DescribeTo(os);
+    *os << "), value1 (";
+    value1_matcher_.DescribeTo(os);
+    *os << ") and value2 (";
+    value2_matcher_.DescribeTo(os);
+    *os << ")";
+  }
+
+  virtual bool MatchAndExplain(Node* node,
+                               MatchResultListener* listener) const OVERRIDE {
+    return (NodeMatcher::MatchAndExplain(node, listener) &&
+            PrintMatchAndExplain(OpParameter<MachineType>(node), "type",
+                                 type_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetValueInput(node, 0),
+                                 "value0", value0_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetValueInput(node, 1),
+                                 "value1", value1_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetValueInput(node, 2),
+                                 "value2", value2_matcher_, listener));
+  }
+
+ private:
+  const Matcher<MachineType> type_matcher_;
+  const Matcher<Node*> value0_matcher_;
+  const Matcher<Node*> value1_matcher_;
+  const Matcher<Node*> value2_matcher_;
+};
+
+
 class IsPhiMatcher FINAL : public NodeMatcher {
  public:
   IsPhiMatcher(const Matcher<MachineType>& type_matcher,
@@ -254,6 +300,45 @@ class IsPhiMatcher FINAL : public NodeMatcher {
 };
 
 
+class IsEffectPhiMatcher FINAL : public NodeMatcher {
+ public:
+  IsEffectPhiMatcher(const Matcher<Node*>& effect0_matcher,
+                     const Matcher<Node*>& effect1_matcher,
+                     const Matcher<Node*>& control_matcher)
+      : NodeMatcher(IrOpcode::kEffectPhi),
+        effect0_matcher_(effect0_matcher),
+        effect1_matcher_(effect1_matcher),
+        control_matcher_(control_matcher) {}
+
+  virtual void DescribeTo(std::ostream* os) const OVERRIDE {
+    NodeMatcher::DescribeTo(os);
+    *os << "), effect0 (";
+    effect0_matcher_.DescribeTo(os);
+    *os << "), effect1 (";
+    effect1_matcher_.DescribeTo(os);
+    *os << ") and control (";
+    control_matcher_.DescribeTo(os);
+    *os << ")";
+  }
+
+  virtual bool MatchAndExplain(Node* node,
+                               MatchResultListener* listener) const OVERRIDE {
+    return (NodeMatcher::MatchAndExplain(node, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetEffectInput(node, 0),
+                                 "effect0", effect0_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetEffectInput(node, 1),
+                                 "effect1", effect1_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetControlInput(node),
+                                 "control", control_matcher_, listener));
+  }
+
+ private:
+  const Matcher<Node*> effect0_matcher_;
+  const Matcher<Node*> effect1_matcher_;
+  const Matcher<Node*> control_matcher_;
+};
+
+
 class IsProjectionMatcher FINAL : public NodeMatcher {
  public:
   IsProjectionMatcher(const Matcher<size_t>& index_matcher,
@@ -286,15 +371,66 @@ class IsProjectionMatcher FINAL : public NodeMatcher {
 };
 
 
-class IsCallMatcher FINAL : public NodeMatcher {
+class IsCall2Matcher FINAL : public NodeMatcher {
  public:
-  IsCallMatcher(const Matcher<CallDescriptor*>& descriptor_matcher,
-                const Matcher<Node*>& value0_matcher,
-                const Matcher<Node*>& value1_matcher,
-                const Matcher<Node*>& value2_matcher,
-                const Matcher<Node*>& value3_matcher,
-                const Matcher<Node*>& effect_matcher,
-                const Matcher<Node*>& control_matcher)
+  IsCall2Matcher(const Matcher<CallDescriptor*>& descriptor_matcher,
+                 const Matcher<Node*>& value0_matcher,
+                 const Matcher<Node*>& value1_matcher,
+                 const Matcher<Node*>& effect_matcher,
+                 const Matcher<Node*>& control_matcher)
+      : NodeMatcher(IrOpcode::kCall),
+        descriptor_matcher_(descriptor_matcher),
+        value0_matcher_(value0_matcher),
+        value1_matcher_(value1_matcher),
+        effect_matcher_(effect_matcher),
+        control_matcher_(control_matcher) {}
+
+  virtual void DescribeTo(std::ostream* os) const OVERRIDE {
+    NodeMatcher::DescribeTo(os);
+    *os << " whose value0 (";
+    value0_matcher_.DescribeTo(os);
+    *os << ") and value1 (";
+    value1_matcher_.DescribeTo(os);
+    *os << ") and effect (";
+    effect_matcher_.DescribeTo(os);
+    *os << ") and control (";
+    control_matcher_.DescribeTo(os);
+    *os << ")";
+  }
+
+  virtual bool MatchAndExplain(Node* node,
+                               MatchResultListener* listener) const OVERRIDE {
+    return (NodeMatcher::MatchAndExplain(node, listener) &&
+            PrintMatchAndExplain(OpParameter<CallDescriptor*>(node),
+                                 "descriptor", descriptor_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetValueInput(node, 0),
+                                 "value0", value0_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetValueInput(node, 1),
+                                 "value1", value1_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetEffectInput(node), "effect",
+                                 effect_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetControlInput(node),
+                                 "control", control_matcher_, listener));
+  }
+
+ private:
+  const Matcher<CallDescriptor*> descriptor_matcher_;
+  const Matcher<Node*> value0_matcher_;
+  const Matcher<Node*> value1_matcher_;
+  const Matcher<Node*> effect_matcher_;
+  const Matcher<Node*> control_matcher_;
+};
+
+
+class IsCall4Matcher FINAL : public NodeMatcher {
+ public:
+  IsCall4Matcher(const Matcher<CallDescriptor*>& descriptor_matcher,
+                 const Matcher<Node*>& value0_matcher,
+                 const Matcher<Node*>& value1_matcher,
+                 const Matcher<Node*>& value2_matcher,
+                 const Matcher<Node*>& value3_matcher,
+                 const Matcher<Node*>& effect_matcher,
+                 const Matcher<Node*>& control_matcher)
       : NodeMatcher(IrOpcode::kCall),
         descriptor_matcher_(descriptor_matcher),
         value0_matcher_(value0_matcher),
@@ -355,11 +491,13 @@ class IsLoadFieldMatcher FINAL : public NodeMatcher {
  public:
   IsLoadFieldMatcher(const Matcher<FieldAccess>& access_matcher,
                      const Matcher<Node*>& base_matcher,
-                     const Matcher<Node*>& effect_matcher)
+                     const Matcher<Node*>& effect_matcher,
+                     const Matcher<Node*>& control_matcher)
       : NodeMatcher(IrOpcode::kLoadField),
         access_matcher_(access_matcher),
         base_matcher_(base_matcher),
-        effect_matcher_(effect_matcher) {}
+        effect_matcher_(effect_matcher),
+        control_matcher_(control_matcher) {}
 
   virtual void DescribeTo(std::ostream* os) const OVERRIDE {
     NodeMatcher::DescribeTo(os);
@@ -367,8 +505,10 @@ class IsLoadFieldMatcher FINAL : public NodeMatcher {
     access_matcher_.DescribeTo(os);
     *os << "), base (";
     base_matcher_.DescribeTo(os);
-    *os << ") and effect (";
+    *os << "), effect (";
     effect_matcher_.DescribeTo(os);
+    *os << ") and control (";
+    control_matcher_.DescribeTo(os);
     *os << ")";
   }
 
@@ -380,13 +520,16 @@ class IsLoadFieldMatcher FINAL : public NodeMatcher {
             PrintMatchAndExplain(NodeProperties::GetValueInput(node, 0), "base",
                                  base_matcher_, listener) &&
             PrintMatchAndExplain(NodeProperties::GetEffectInput(node), "effect",
-                                 effect_matcher_, listener));
+                                 effect_matcher_, listener) &&
+            PrintMatchAndExplain(NodeProperties::GetControlInput(node),
+                                 "control", control_matcher_, listener));
   }
 
  private:
   const Matcher<FieldAccess> access_matcher_;
   const Matcher<Node*> base_matcher_;
   const Matcher<Node*> effect_matcher_;
+  const Matcher<Node*> control_matcher_;
 };
 
 
@@ -396,15 +539,13 @@ class IsLoadElementMatcher FINAL : public NodeMatcher {
                        const Matcher<Node*>& base_matcher,
                        const Matcher<Node*>& index_matcher,
                        const Matcher<Node*>& length_matcher,
-                       const Matcher<Node*>& effect_matcher,
-                       const Matcher<Node*>& control_matcher)
+                       const Matcher<Node*>& effect_matcher)
       : NodeMatcher(IrOpcode::kLoadElement),
         access_matcher_(access_matcher),
         base_matcher_(base_matcher),
         index_matcher_(index_matcher),
         length_matcher_(length_matcher),
-        effect_matcher_(effect_matcher),
-        control_matcher_(control_matcher) {}
+        effect_matcher_(effect_matcher) {}
 
   virtual void DescribeTo(std::ostream* os) const OVERRIDE {
     NodeMatcher::DescribeTo(os);
@@ -416,10 +557,8 @@ class IsLoadElementMatcher FINAL : public NodeMatcher {
     index_matcher_.DescribeTo(os);
     *os << "), length (";
     length_matcher_.DescribeTo(os);
-    *os << "), effect (";
+    *os << ") and effect (";
     effect_matcher_.DescribeTo(os);
-    *os << ") and control (";
-    control_matcher_.DescribeTo(os);
     *os << ")";
   }
 
@@ -435,9 +574,7 @@ class IsLoadElementMatcher FINAL : public NodeMatcher {
             PrintMatchAndExplain(NodeProperties::GetValueInput(node, 2),
                                  "length", length_matcher_, listener) &&
             PrintMatchAndExplain(NodeProperties::GetEffectInput(node), "effect",
-                                 effect_matcher_, listener) &&
-            PrintMatchAndExplain(NodeProperties::GetControlInput(node),
-                                 "control", control_matcher_, listener));
+                                 effect_matcher_, listener));
   }
 
  private:
@@ -446,7 +583,6 @@ class IsLoadElementMatcher FINAL : public NodeMatcher {
   const Matcher<Node*> index_matcher_;
   const Matcher<Node*> length_matcher_;
   const Matcher<Node*> effect_matcher_;
-  const Matcher<Node*> control_matcher_;
 };
 
 
@@ -765,12 +901,29 @@ Matcher<Node*> IsNumberConstant(const Matcher<double>& value_matcher) {
 }
 
 
+Matcher<Node*> IsSelect(const Matcher<MachineType>& type_matcher,
+                        const Matcher<Node*>& value0_matcher,
+                        const Matcher<Node*>& value1_matcher,
+                        const Matcher<Node*>& value2_matcher) {
+  return MakeMatcher(new IsSelectMatcher(type_matcher, value0_matcher,
+                                         value1_matcher, value2_matcher));
+}
+
+
 Matcher<Node*> IsPhi(const Matcher<MachineType>& type_matcher,
                      const Matcher<Node*>& value0_matcher,
                      const Matcher<Node*>& value1_matcher,
                      const Matcher<Node*>& merge_matcher) {
   return MakeMatcher(new IsPhiMatcher(type_matcher, value0_matcher,
                                       value1_matcher, merge_matcher));
+}
+
+
+Matcher<Node*> IsEffectPhi(const Matcher<Node*>& effect0_matcher,
+                           const Matcher<Node*>& effect1_matcher,
+                           const Matcher<Node*>& merge_matcher) {
+  return MakeMatcher(
+      new IsEffectPhiMatcher(effect0_matcher, effect1_matcher, merge_matcher));
 }
 
 
@@ -783,11 +936,22 @@ Matcher<Node*> IsProjection(const Matcher<size_t>& index_matcher,
 Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
                       const Matcher<Node*>& value0_matcher,
                       const Matcher<Node*>& value1_matcher,
+                      const Matcher<Node*>& effect_matcher,
+                      const Matcher<Node*>& control_matcher) {
+  return MakeMatcher(new IsCall2Matcher(descriptor_matcher, value0_matcher,
+                                        value1_matcher, effect_matcher,
+                                        control_matcher));
+}
+
+
+Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
+                      const Matcher<Node*>& value0_matcher,
+                      const Matcher<Node*>& value1_matcher,
                       const Matcher<Node*>& value2_matcher,
                       const Matcher<Node*>& value3_matcher,
                       const Matcher<Node*>& effect_matcher,
                       const Matcher<Node*>& control_matcher) {
-  return MakeMatcher(new IsCallMatcher(
+  return MakeMatcher(new IsCall4Matcher(
       descriptor_matcher, value0_matcher, value1_matcher, value2_matcher,
       value3_matcher, effect_matcher, control_matcher));
 }
@@ -795,9 +959,10 @@ Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
 
 Matcher<Node*> IsLoadField(const Matcher<FieldAccess>& access_matcher,
                            const Matcher<Node*>& base_matcher,
-                           const Matcher<Node*>& effect_matcher) {
-  return MakeMatcher(
-      new IsLoadFieldMatcher(access_matcher, base_matcher, effect_matcher));
+                           const Matcher<Node*>& effect_matcher,
+                           const Matcher<Node*>& control_matcher) {
+  return MakeMatcher(new IsLoadFieldMatcher(access_matcher, base_matcher,
+                                            effect_matcher, control_matcher));
 }
 
 
@@ -805,11 +970,10 @@ Matcher<Node*> IsLoadElement(const Matcher<ElementAccess>& access_matcher,
                              const Matcher<Node*>& base_matcher,
                              const Matcher<Node*>& index_matcher,
                              const Matcher<Node*>& length_matcher,
-                             const Matcher<Node*>& effect_matcher,
-                             const Matcher<Node*>& control_matcher) {
+                             const Matcher<Node*>& effect_matcher) {
   return MakeMatcher(new IsLoadElementMatcher(access_matcher, base_matcher,
                                               index_matcher, length_matcher,
-                                              effect_matcher, control_matcher));
+                                              effect_matcher));
 }
 
 
@@ -854,8 +1018,10 @@ Matcher<Node*> IsStore(const Matcher<StoreRepresentation>& rep_matcher,
     return MakeMatcher(                                                   \
         new IsBinopMatcher(IrOpcode::k##Name, lhs_matcher, rhs_matcher)); \
   }
+IS_BINOP_MATCHER(NumberEqual)
 IS_BINOP_MATCHER(NumberLessThan)
 IS_BINOP_MATCHER(NumberSubtract)
+IS_BINOP_MATCHER(NumberMultiply)
 IS_BINOP_MATCHER(Word32And)
 IS_BINOP_MATCHER(Word32Sar)
 IS_BINOP_MATCHER(Word32Shl)
@@ -881,6 +1047,7 @@ IS_BINOP_MATCHER(Uint32LessThanOrEqual)
   Matcher<Node*> Is##Name(const Matcher<Node*>& input_matcher) {             \
     return MakeMatcher(new IsUnopMatcher(IrOpcode::k##Name, input_matcher)); \
   }
+IS_UNOP_MATCHER(BooleanNot)
 IS_UNOP_MATCHER(ChangeFloat64ToInt32)
 IS_UNOP_MATCHER(ChangeFloat64ToUint32)
 IS_UNOP_MATCHER(ChangeInt32ToFloat64)
@@ -891,6 +1058,10 @@ IS_UNOP_MATCHER(TruncateFloat64ToFloat32)
 IS_UNOP_MATCHER(TruncateFloat64ToInt32)
 IS_UNOP_MATCHER(TruncateInt64ToInt32)
 IS_UNOP_MATCHER(Float64Sqrt)
+IS_UNOP_MATCHER(Float64Floor)
+IS_UNOP_MATCHER(Float64Ceil)
+IS_UNOP_MATCHER(Float64RoundTruncate)
+IS_UNOP_MATCHER(Float64RoundTiesAway)
 #undef IS_UNOP_MATCHER
 
 }  // namespace compiler

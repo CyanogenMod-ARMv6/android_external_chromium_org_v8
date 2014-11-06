@@ -69,14 +69,54 @@ class JSTypedLoweringTest : public TypedGraphTest {
 
 
 // -----------------------------------------------------------------------------
+// JSToBoolean
+
+
+TEST_F(JSTypedLoweringTest, JSToBooleanWithString) {
+  Node* input = Parameter(Type::String());
+  Node* context = UndefinedConstant();
+  Node* effect = graph()->start();
+  Node* control = graph()->start();
+
+  Reduction r = Reduce(graph()->NewNode(javascript()->ToBoolean(), input,
+                                        context, effect, control));
+  ASSERT_TRUE(r.Changed());
+  EXPECT_THAT(r.replacement(),
+              IsBooleanNot(IsNumberEqual(
+                  IsLoadField(AccessBuilder::ForStringLength(), input,
+                              graph()->start(), graph()->start()),
+                  IsNumberConstant(0))));
+}
+
+
+TEST_F(JSTypedLoweringTest, JSToBooleanWithOrderedNumberAndBoolean) {
+  Node* p0 = Parameter(Type::OrderedNumber(), 0);
+  Node* p1 = Parameter(Type::Boolean(), 1);
+  Node* context = UndefinedConstant();
+  Node* effect = graph()->start();
+  Node* control = graph()->start();
+
+  Reduction r = Reduce(graph()->NewNode(
+      javascript()->ToBoolean(),
+      graph()->NewNode(common()->Phi(kMachAnyTagged, 2), p0, p1, control),
+      context, effect, control));
+  ASSERT_TRUE(r.Changed());
+  EXPECT_THAT(
+      r.replacement(),
+      IsPhi(kMachAnyTagged,
+            IsBooleanNot(IsNumberEqual(p0, IsNumberConstant(0))), p1, control));
+}
+
+
+// -----------------------------------------------------------------------------
 // JSLoadProperty
 
 
 TEST_F(JSTypedLoweringTest, JSLoadPropertyFromExternalTypedArray) {
   const size_t kLength = 17;
-  uint8_t backing_store[kLength * 8];
+  double backing_store[kLength];
   Handle<JSArrayBuffer> buffer =
-      NewArrayBuffer(backing_store, arraysize(backing_store));
+      NewArrayBuffer(backing_store, sizeof(backing_store));
   VectorSlotPair feedback(Handle<TypeFeedbackVector>::null(),
                           FeedbackVectorICSlot::Invalid());
   TRACED_FOREACH(ExternalArrayType, type, kExternalArrayTypes) {
@@ -98,12 +138,11 @@ TEST_F(JSTypedLoweringTest, JSLoadPropertyFromExternalTypedArray) {
     Reduction r = Reduce(node);
 
     ASSERT_TRUE(r.Changed());
-    EXPECT_THAT(
-        r.replacement(),
-        IsLoadElement(AccessBuilder::ForTypedArrayElement(type, true),
-                      IsIntPtrConstant(bit_cast<intptr_t>(&backing_store[0])),
-                      key, IsInt32Constant(static_cast<int>(kLength)), effect,
-                      control));
+    EXPECT_THAT(r.replacement(),
+                IsLoadElement(
+                    AccessBuilder::ForTypedArrayElement(type, true),
+                    IsIntPtrConstant(bit_cast<intptr_t>(&backing_store[0])),
+                    key, IsNumberConstant(array->length()->Number()), effect));
   }
 }
 
@@ -114,9 +153,9 @@ TEST_F(JSTypedLoweringTest, JSLoadPropertyFromExternalTypedArray) {
 
 TEST_F(JSTypedLoweringTest, JSStorePropertyToExternalTypedArray) {
   const size_t kLength = 17;
-  uint8_t backing_store[kLength * 8];
+  double backing_store[kLength];
   Handle<JSArrayBuffer> buffer =
-      NewArrayBuffer(backing_store, arraysize(backing_store));
+      NewArrayBuffer(backing_store, sizeof(backing_store));
   TRACED_FOREACH(ExternalArrayType, type, kExternalArrayTypes) {
     TRACED_FOREACH(StrictMode, strict_mode, kStrictModes) {
       Handle<JSTypedArray> array =
@@ -142,7 +181,7 @@ TEST_F(JSTypedLoweringTest, JSStorePropertyToExternalTypedArray) {
                   IsStoreElement(
                       AccessBuilder::ForTypedArrayElement(type, true),
                       IsIntPtrConstant(bit_cast<intptr_t>(&backing_store[0])),
-                      key, IsInt32Constant(static_cast<int>(kLength)), value,
+                      key, IsNumberConstant(array->length()->Number()), value,
                       effect, control));
     }
   }

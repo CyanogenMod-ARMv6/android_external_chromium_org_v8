@@ -3293,6 +3293,24 @@ THREADED_TEST(ArrayBuffer_External) {
 }
 
 
+THREADED_TEST(ArrayBuffer_DisableNeuter) {
+  LocalContext env;
+  v8::Isolate* isolate = env->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  i::ScopedVector<uint8_t> my_data(100);
+  memset(my_data.start(), 0, 100);
+  Local<v8::ArrayBuffer> ab =
+      v8::ArrayBuffer::New(isolate, my_data.start(), 100);
+  CHECK(ab->IsNeuterable());
+
+  i::Handle<i::JSArrayBuffer> buf = v8::Utils::OpenHandle(*ab);
+  buf->set_is_neuterable(false);
+
+  CHECK(!ab->IsNeuterable());
+}
+
+
 static void CheckDataViewIsNeutered(v8::Handle<v8::DataView> dv) {
   CHECK_EQ(0, static_cast<int>(dv->ByteLength()));
   CHECK_EQ(0, static_cast<int>(dv->ByteOffset()));
@@ -7469,14 +7487,84 @@ struct FlagAndPersistent {
 };
 
 
-static void DisposeAndSetFlag(
+static void SetFlag(
     const v8::WeakCallbackData<v8::Object, FlagAndPersistent>& data) {
-  data.GetParameter()->handle.Reset();
   data.GetParameter()->flag = true;
 }
 
 
+static void IndependentWeakHandle(bool global_gc, bool interlinked) {
+  v8::Isolate* iso = CcTest::isolate();
+  v8::HandleScope scope(iso);
+  v8::Handle<Context> context = Context::New(iso);
+  Context::Scope context_scope(context);
+
+  FlagAndPersistent object_a, object_b;
+
+  intptr_t big_heap_size;
+
+  {
+    v8::HandleScope handle_scope(iso);
+    Local<Object> a(v8::Object::New(iso));
+    Local<Object> b(v8::Object::New(iso));
+    object_a.handle.Reset(iso, a);
+    object_b.handle.Reset(iso, b);
+    if (interlinked) {
+      a->Set(v8_str("x"), b);
+      b->Set(v8_str("x"), a);
+    }
+    if (global_gc) {
+      CcTest::heap()->CollectAllGarbage(TestHeap::Heap::kNoGCFlags);
+    } else {
+      CcTest::heap()->CollectGarbage(i::NEW_SPACE);
+    }
+    // We are relying on this creating a big flag array and reserving the space
+    // up front.
+    v8::Handle<Value> big_array = CompileRun("new Array(50000)");
+    a->Set(v8_str("y"), big_array);
+    big_heap_size = CcTest::heap()->SizeOfObjects();
+  }
+
+  object_a.flag = false;
+  object_b.flag = false;
+  object_a.handle.SetPhantom(&object_a, &SetFlag);
+  object_b.handle.SetPhantom(&object_b, &SetFlag);
+  CHECK(!object_b.handle.IsIndependent());
+  object_a.handle.MarkIndependent();
+  object_b.handle.MarkIndependent();
+  CHECK(object_b.handle.IsIndependent());
+  if (global_gc) {
+    CcTest::heap()->CollectAllGarbage(TestHeap::Heap::kNoGCFlags);
+  } else {
+    CcTest::heap()->CollectGarbage(i::NEW_SPACE);
+  }
+  // A single GC should be enough to reclaim the memory, since we are using
+  // phantom handles.
+  CHECK_LT(CcTest::heap()->SizeOfObjects(), big_heap_size - 200000);
+  CHECK(object_a.flag);
+  CHECK(object_b.flag);
+}
+
+
 THREADED_TEST(IndependentWeakHandle) {
+  IndependentWeakHandle(false, false);
+  IndependentWeakHandle(false, true);
+  IndependentWeakHandle(true, false);
+  IndependentWeakHandle(true, true);
+}
+
+
+static void ResetUseValueAndSetFlag(
+    const v8::WeakCallbackData<v8::Object, FlagAndPersistent>& data) {
+  // Blink will reset the handle, and then use the other handle, so they
+  // can't use the same backing slot.
+  data.GetParameter()->handle.Reset();
+  data.GetValue()->IsBoolean();  // Make sure the handle still works.
+  data.GetParameter()->flag = true;
+}
+
+
+static void ResetWeakHandle(bool global_gc) {
   v8::Isolate* iso = CcTest::isolate();
   v8::HandleScope scope(iso);
   v8::Handle<Context> context = Context::New(iso);
@@ -7486,21 +7574,39 @@ THREADED_TEST(IndependentWeakHandle) {
 
   {
     v8::HandleScope handle_scope(iso);
-    object_a.handle.Reset(iso, v8::Object::New(iso));
-    object_b.handle.Reset(iso, v8::Object::New(iso));
+    Local<Object> a(v8::Object::New(iso));
+    Local<Object> b(v8::Object::New(iso));
+    object_a.handle.Reset(iso, a);
+    object_b.handle.Reset(iso, b);
+    if (global_gc) {
+      CcTest::heap()->CollectAllGarbage(TestHeap::Heap::kNoGCFlags);
+    } else {
+      CcTest::heap()->CollectGarbage(i::NEW_SPACE);
+    }
   }
 
   object_a.flag = false;
   object_b.flag = false;
-  object_a.handle.SetWeak(&object_a, &DisposeAndSetFlag);
-  object_b.handle.SetWeak(&object_b, &DisposeAndSetFlag);
-  CHECK(!object_b.handle.IsIndependent());
-  object_a.handle.MarkIndependent();
-  object_b.handle.MarkIndependent();
-  CHECK(object_b.handle.IsIndependent());
-  CcTest::heap()->CollectGarbage(i::NEW_SPACE);
+  object_a.handle.SetWeak(&object_a, &ResetUseValueAndSetFlag);
+  object_b.handle.SetWeak(&object_b, &ResetUseValueAndSetFlag);
+  if (!global_gc) {
+    object_a.handle.MarkIndependent();
+    object_b.handle.MarkIndependent();
+    CHECK(object_b.handle.IsIndependent());
+  }
+  if (global_gc) {
+    CcTest::heap()->CollectAllGarbage(TestHeap::Heap::kNoGCFlags);
+  } else {
+    CcTest::heap()->CollectGarbage(i::NEW_SPACE);
+  }
   CHECK(object_a.flag);
   CHECK(object_b.flag);
+}
+
+
+THREADED_TEST(ResetWeakHandle) {
+  ResetWeakHandle(false);
+  ResetWeakHandle(true);
 }
 
 
@@ -8529,9 +8635,11 @@ static void ThrowV8Exception(const v8::FunctionCallbackInfo<v8::Value>& info) {
 }
 
 
-THREADED_TEST(ExceptionGetStackTrace) {
+THREADED_TEST(ExceptionGetMessage) {
   LocalContext context;
   v8::HandleScope scope(context->GetIsolate());
+  v8::Handle<String> foo_str = v8_str("foo");
+  v8::Handle<String> message_str = v8_str("message");
 
   v8::V8::SetCaptureStackTraceForUncaughtExceptions(true);
 
@@ -8541,20 +8649,51 @@ THREADED_TEST(ExceptionGetStackTrace) {
   global->Set(v8_str("throwV8Exception"), fun->GetFunction());
 
   TryCatch try_catch;
-  CompileRun("function f1() { throwV8Exception(); }; f1();");
+  CompileRun(
+      "function f1() {\n"
+      "  throwV8Exception();\n"
+      "};\n"
+      "f1();");
   CHECK(try_catch.HasCaught());
 
   v8::Handle<v8::Value> error = try_catch.Exception();
-  v8::Handle<String> foo = v8_str("foo");
-  v8::Handle<String> message = v8_str("message");
   CHECK(error->IsObject());
-  CHECK(error.As<v8::Object>()->Get(message)->Equals(foo));
+  CHECK(error.As<v8::Object>()->Get(message_str)->Equals(foo_str));
 
-  v8::Handle<v8::StackTrace> stackTrace = v8::Exception::GetStackTrace(error);
+  v8::Handle<v8::Message> message = v8::Exception::GetMessage(error);
+  CHECK(!message.IsEmpty());
+  CHECK_EQ(2, message->GetLineNumber());
+  CHECK_EQ(2, message->GetStartColumn());
+
+  v8::Handle<v8::StackTrace> stackTrace = message->GetStackTrace();
   CHECK(!stackTrace.IsEmpty());
   CHECK_EQ(2, stackTrace->GetFrameCount());
 
   v8::V8::SetCaptureStackTraceForUncaughtExceptions(false);
+
+  // Now check message location when SetCaptureStackTraceForUncaughtExceptions
+  // is false.
+  try_catch.Reset();
+
+  CompileRun(
+      "function f2() {\n"
+      "  return throwV8Exception();\n"
+      "};\n"
+      "f2();");
+  CHECK(try_catch.HasCaught());
+
+  error = try_catch.Exception();
+  CHECK(error->IsObject());
+  CHECK(error.As<v8::Object>()->Get(message_str)->Equals(foo_str));
+
+  message = v8::Exception::GetMessage(error);
+  CHECK(!message.IsEmpty());
+  CHECK_EQ(2, message->GetLineNumber());
+  CHECK_EQ(9, message->GetStartColumn());
+
+  // Should be empty stack trace.
+  stackTrace = message->GetStackTrace();
+  CHECK(stackTrace.IsEmpty());
 }
 
 
@@ -15033,7 +15172,7 @@ THREADED_TEST(PropertyEnumeration2) {
   v8::Handle<v8::Array> props = val.As<v8::Object>()->GetPropertyNames();
   CHECK_EQ(0, props->Length());
   for (uint32_t i = 0; i < props->Length(); i++) {
-    printf("p[%d]\n", i);
+    printf("p[%u]\n", i);
   }
 }
 
@@ -17627,6 +17766,7 @@ TEST(CaptureStackTrace) {
 static void StackTraceForUncaughtExceptionListener(
     v8::Handle<v8::Message> message,
     v8::Handle<Value>) {
+  report_count++;
   v8::Handle<v8::StackTrace> stack_trace = message->GetStackTrace();
   CHECK_EQ(2, stack_trace->GetFrameCount());
   checkStackFrame("origin", "foo", 2, 3, false, false,
@@ -17657,6 +17797,38 @@ TEST(CaptureStackTraceForUncaughtException) {
   Function::Cast(*trouble)->Call(global, 0, NULL);
   v8::V8::SetCaptureStackTraceForUncaughtExceptions(false);
   v8::V8::RemoveMessageListeners(StackTraceForUncaughtExceptionListener);
+  CHECK_EQ(1, report_count);
+}
+
+
+TEST(GetStackTraceForUncaughtExceptionFromSimpleStackTrace) {
+  report_count = 0;
+  LocalContext env;
+  v8::HandleScope scope(env->GetIsolate());
+
+  // Create an Error object first.
+  CompileRunWithOrigin(
+      "function foo() {\n"
+      "e=new Error('err');\n"
+      "};\n"
+      "function bar() {\n"
+      "  foo();\n"
+      "};\n"
+      "var e;",
+      "origin");
+  v8::Local<v8::Object> global = env->Global();
+  Local<Value> trouble = global->Get(v8_str("bar"));
+  CHECK(trouble->IsFunction());
+  Function::Cast(*trouble)->Call(global, 0, NULL);
+
+  // Enable capturing detailed stack trace late, and throw the exception.
+  // The detailed stack trace should be extracted from the simple stack.
+  v8::V8::AddMessageListener(StackTraceForUncaughtExceptionListener);
+  v8::V8::SetCaptureStackTraceForUncaughtExceptions(true);
+  CompileRunWithOrigin("throw e", "origin");
+  v8::V8::SetCaptureStackTraceForUncaughtExceptions(false);
+  v8::V8::RemoveMessageListeners(StackTraceForUncaughtExceptionListener);
+  CHECK_EQ(1, report_count);
 }
 
 
@@ -17822,7 +17994,8 @@ void PromiseRejectCallback(v8::PromiseRejectMessage message) {
     promise_reject_counter++;
     CcTest::global()->Set(v8_str("rejected"), message.GetPromise());
     CcTest::global()->Set(v8_str("value"), message.GetValue());
-    v8::Handle<v8::StackTrace> stack_trace = message.GetStackTrace();
+    v8::Handle<v8::StackTrace> stack_trace =
+        v8::Exception::GetMessage(message.GetValue())->GetStackTrace();
     if (!stack_trace.IsEmpty()) {
       promise_reject_frame_count = stack_trace->GetFrameCount();
       if (promise_reject_frame_count > 0) {
@@ -17836,7 +18009,6 @@ void PromiseRejectCallback(v8::PromiseRejectMessage message) {
     promise_revoke_counter++;
     CcTest::global()->Set(v8_str("revoked"), message.GetPromise());
     CHECK(message.GetValue().IsEmpty());
-    CHECK(message.GetStackTrace().IsEmpty());
   }
 }
 

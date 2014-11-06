@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "src/compiler/diamond.h"
 #include "src/compiler/graph-inl.h"
 #include "src/compiler/js-builtin-reducer.h"
 #include "src/compiler/node-matchers.h"
@@ -80,7 +81,7 @@ class JSCallReduction {
   int GetJSCallArity() {
     DCHECK_EQ(IrOpcode::kJSCallFunction, node_->opcode());
     // Skip first (i.e. callee) and second (i.e. receiver) operand.
-    return OperatorProperties::GetValueInputCount(node_->op()) - 2;
+    return node_->op()->ValueInputCount() - 2;
   }
 
   Node* GetJSCallInput(int index) {
@@ -106,17 +107,10 @@ Reduction JSBuiltinReducer::ReduceMathAbs(Node* node) {
     // Math.abs(a:number) -> (a > 0 ? a : 0 - a)
     Node* value = r.left();
     Node* zero = jsgraph()->ZeroConstant();
-    Node* control = graph()->start();
-    Node* tag = graph()->NewNode(simplified()->NumberLessThan(), zero, value);
-
-    Node* branch = graph()->NewNode(common()->Branch(), tag, control);
-    Node* if_true = graph()->NewNode(common()->IfTrue(), branch);
-    Node* if_false = graph()->NewNode(common()->IfFalse(), branch);
-    Node* merge = graph()->NewNode(common()->Merge(2), if_true, if_false);
-
+    Node* cmp = graph()->NewNode(simplified()->NumberLessThan(), zero, value);
+    Diamond d(graph(), common(), cmp);
     Node* neg = graph()->NewNode(simplified()->NumberSubtract(), zero, value);
-    value = graph()->NewNode(common()->Phi(kMachNone, 2), value, neg, merge);
-    return Replace(value);
+    return Replace(d.Phi(kMachNone, value, neg));
   }
   return NoChange();
 }
@@ -150,15 +144,9 @@ Reduction JSBuiltinReducer::ReduceMathMax(Node* node) {
     Node* value = r.GetJSCallInput(0);
     for (int i = 1; i < r.GetJSCallArity(); i++) {
       Node* p = r.GetJSCallInput(i);
-      Node* control = graph()->start();
-      Node* tag = graph()->NewNode(simplified()->NumberLessThan(), value, p);
-
-      Node* branch = graph()->NewNode(common()->Branch(), tag, control);
-      Node* if_true = graph()->NewNode(common()->IfTrue(), branch);
-      Node* if_false = graph()->NewNode(common()->IfFalse(), branch);
-      Node* merge = graph()->NewNode(common()->Merge(2), if_true, if_false);
-
-      value = graph()->NewNode(common()->Phi(kMachNone, 2), p, value, merge);
+      Node* cmp = graph()->NewNode(simplified()->NumberLessThan(), value, p);
+      Diamond d(graph(), common(), cmp);
+      value = d.Phi(kMachNone, p, value);
     }
     return Replace(value);
   }
@@ -191,6 +179,32 @@ Reduction JSBuiltinReducer::ReduceMathFround(Node* node) {
 }
 
 
+// ES6 draft 10-14-14, section 20.2.2.16.
+Reduction JSBuiltinReducer::ReduceMathFloor(Node* node) {
+  if (!machine()->HasFloat64Floor()) return NoChange();
+  JSCallReduction r(node);
+  if (r.InputsMatchOne(Type::Number())) {
+    // Math.floor(a:number) -> Float64Floor(a)
+    Node* value = graph()->NewNode(machine()->Float64Floor(), r.left());
+    return Replace(value);
+  }
+  return NoChange();
+}
+
+
+// ES6 draft 10-14-14, section 20.2.2.10.
+Reduction JSBuiltinReducer::ReduceMathCeil(Node* node) {
+  if (!machine()->HasFloat64Ceil()) return NoChange();
+  JSCallReduction r(node);
+  if (r.InputsMatchOne(Type::Number())) {
+    // Math.ceil(a:number) -> Float64Ceil(a)
+    Node* value = graph()->NewNode(machine()->Float64Ceil(), r.left());
+    return Replace(value);
+  }
+  return NoChange();
+}
+
+
 Reduction JSBuiltinReducer::Reduce(Node* node) {
   JSCallReduction r(node);
 
@@ -207,6 +221,10 @@ Reduction JSBuiltinReducer::Reduce(Node* node) {
       return ReplaceWithPureReduction(node, ReduceMathImul(node));
     case kMathFround:
       return ReplaceWithPureReduction(node, ReduceMathFround(node));
+    case kMathFloor:
+      return ReplaceWithPureReduction(node, ReduceMathFloor(node));
+    case kMathCeil:
+      return ReplaceWithPureReduction(node, ReduceMathCeil(node));
     default:
       break;
   }

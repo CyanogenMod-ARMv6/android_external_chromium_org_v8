@@ -61,7 +61,7 @@ class SimplifiedLoweringTester : public GraphBuilderTester<ReturnType> {
     Zone* zone = this->zone();
     CompilationInfo info(zone->isolate(), zone);
     Linkage linkage(
-        &info, Linkage::GetSimplifiedCDescriptor(zone, this->machine_sig_));
+        zone, Linkage::GetSimplifiedCDescriptor(zone, this->machine_sig_));
     ChangeLowering lowering(&jsgraph, &linkage);
     GraphReducer reducer(this->graph());
     reducer.AddReducer(&lowering);
@@ -1010,8 +1010,10 @@ TEST(LowerNumberDivMod_to_float64) {
     TestingGraph t(test_types[i], test_types[i]);
 
     t.CheckLoweringBinop(IrOpcode::kFloat64Div, t.simplified()->NumberDivide());
-    t.CheckLoweringBinop(IrOpcode::kFloat64Mod,
-                         t.simplified()->NumberModulus());
+    if (!test_types[i]->Is(Type::Unsigned32())) {
+      t.CheckLoweringBinop(IrOpcode::kFloat64Mod,
+                           t.simplified()->NumberModulus());
+    }
   }
 }
 
@@ -1324,45 +1326,54 @@ TEST(InsertChangesAroundFloat64Cmp) {
 }
 
 
+namespace {
+
 void CheckFieldAccessArithmetic(FieldAccess access, Node* load_or_store) {
-  Int32Matcher index = Int32Matcher(load_or_store->InputAt(1));
-  CHECK(index.Is(access.offset - access.tag()));
+  IntPtrMatcher mindex(load_or_store->InputAt(1));
+  CHECK(mindex.Is(access.offset - access.tag()));
 }
 
 
 Node* CheckElementAccessArithmetic(ElementAccess access, Node* load_or_store) {
-  Int32BinopMatcher index(load_or_store->InputAt(1));
-  CHECK_EQ(IrOpcode::kInt32Add, index.node()->opcode());
-  CHECK(index.right().Is(access.header_size - access.tag()));
+  Node* index = load_or_store->InputAt(1);
+  if (kPointerSize == 8) {
+    CHECK_EQ(IrOpcode::kChangeUint32ToUint64, index->opcode());
+    index = index->InputAt(0);
+  }
 
-  int element_size = ElementSizeOf(access.machine_type);
+  Int32BinopMatcher mindex(index);
+  CHECK_EQ(IrOpcode::kInt32Add, mindex.node()->opcode());
+  CHECK(mindex.right().Is(access.header_size - access.tag()));
 
-  if (element_size != 1) {
-    Int32BinopMatcher mul(index.left().node());
-    CHECK_EQ(IrOpcode::kInt32Mul, mul.node()->opcode());
-    CHECK(mul.right().Is(element_size));
-    return mul.left().node();
+  const int element_size_shift = ElementSizeLog2Of(access.machine_type);
+  if (element_size_shift) {
+    Int32BinopMatcher shl(mindex.left().node());
+    CHECK_EQ(IrOpcode::kWord32Shl, shl.node()->opcode());
+    CHECK(shl.right().Is(element_size_shift));
+    return shl.left().node();
   } else {
-    return index.left().node();
+    return mindex.left().node();
   }
 }
 
 
-static const MachineType machine_reps[] = {
-    kRepBit,    kMachInt8,    kMachInt16,    kMachInt32,
-    kMachInt64, kMachFloat64, kMachAnyTagged};
+const MachineType kMachineReps[] = {kRepBit,       kMachInt8,  kMachInt16,
+                                    kMachInt32,    kMachInt64, kMachFloat64,
+                                    kMachAnyTagged};
+
+}  // namespace
 
 
 TEST(LowerLoadField_to_load) {
   TestingGraph t(Type::Any(), Type::Signed32());
 
-  for (size_t i = 0; i < arraysize(machine_reps); i++) {
+  for (size_t i = 0; i < arraysize(kMachineReps); i++) {
     FieldAccess access = {kTaggedBase, FixedArrayBase::kHeaderSize,
-                          Handle<Name>::null(), Type::Any(), machine_reps[i]};
+                          Handle<Name>::null(), Type::Any(), kMachineReps[i]};
 
     Node* load =
         t.graph()->NewNode(t.simplified()->LoadField(access), t.p0, t.start);
-    Node* use = t.Use(load, machine_reps[i]);
+    Node* use = t.Use(load, kMachineReps[i]);
     t.Return(use);
     t.Lower();
     CHECK_EQ(IrOpcode::kLoad, load->opcode());
@@ -1370,7 +1381,7 @@ TEST(LowerLoadField_to_load) {
     CheckFieldAccessArithmetic(access, load);
 
     MachineType rep = OpParameter<MachineType>(load);
-    CHECK_EQ(machine_reps[i], rep);
+    CHECK_EQ(kMachineReps[i], rep);
   }
 }
 
@@ -1378,12 +1389,12 @@ TEST(LowerLoadField_to_load) {
 TEST(LowerStoreField_to_store) {
   TestingGraph t(Type::Any(), Type::Signed32());
 
-  for (size_t i = 0; i < arraysize(machine_reps); i++) {
+  for (size_t i = 0; i < arraysize(kMachineReps); i++) {
     FieldAccess access = {kTaggedBase, FixedArrayBase::kHeaderSize,
-                          Handle<Name>::null(), Type::Any(), machine_reps[i]};
+                          Handle<Name>::null(), Type::Any(), kMachineReps[i]};
 
 
-    Node* val = t.ExampleWithOutput(machine_reps[i]);
+    Node* val = t.ExampleWithOutput(kMachineReps[i]);
     Node* store = t.graph()->NewNode(t.simplified()->StoreField(access), t.p0,
                                      val, t.start, t.start);
     t.Effect(store);
@@ -1393,10 +1404,10 @@ TEST(LowerStoreField_to_store) {
     CheckFieldAccessArithmetic(access, store);
 
     StoreRepresentation rep = OpParameter<StoreRepresentation>(store);
-    if (machine_reps[i] & kRepTagged) {
+    if (kMachineReps[i] & kRepTagged) {
       CHECK_EQ(kFullWriteBarrier, rep.write_barrier_kind());
     }
-    CHECK_EQ(machine_reps[i], rep.machine_type());
+    CHECK_EQ(kMachineReps[i], rep.machine_type());
   }
 }
 
@@ -1404,15 +1415,15 @@ TEST(LowerStoreField_to_store) {
 TEST(LowerLoadElement_to_load) {
   TestingGraph t(Type::Any(), Type::Signed32());
 
-  for (size_t i = 0; i < arraysize(machine_reps); i++) {
+  for (size_t i = 0; i < arraysize(kMachineReps); i++) {
     ElementAccess access = {kNoBoundsCheck, kTaggedBase,
                             FixedArrayBase::kHeaderSize, Type::Any(),
-                            machine_reps[i]};
+                            kMachineReps[i]};
 
     Node* load =
         t.graph()->NewNode(t.simplified()->LoadElement(access), t.p0, t.p1,
                            t.jsgraph.Int32Constant(1024), t.start, t.start);
-    Node* use = t.Use(load, machine_reps[i]);
+    Node* use = t.Use(load, kMachineReps[i]);
     t.Return(use);
     t.Lower();
     CHECK_EQ(IrOpcode::kLoad, load->opcode());
@@ -1420,7 +1431,7 @@ TEST(LowerLoadElement_to_load) {
     CheckElementAccessArithmetic(access, load);
 
     MachineType rep = OpParameter<MachineType>(load);
-    CHECK_EQ(machine_reps[i], rep);
+    CHECK_EQ(kMachineReps[i], rep);
   }
 }
 
@@ -1428,12 +1439,12 @@ TEST(LowerLoadElement_to_load) {
 TEST(LowerStoreElement_to_store) {
   TestingGraph t(Type::Any(), Type::Signed32());
 
-  for (size_t i = 0; i < arraysize(machine_reps); i++) {
+  for (size_t i = 0; i < arraysize(kMachineReps); i++) {
     ElementAccess access = {kNoBoundsCheck, kTaggedBase,
                             FixedArrayBase::kHeaderSize, Type::Any(),
-                            machine_reps[i]};
+                            kMachineReps[i]};
 
-    Node* val = t.ExampleWithOutput(machine_reps[i]);
+    Node* val = t.ExampleWithOutput(kMachineReps[i]);
     Node* store = t.graph()->NewNode(t.simplified()->StoreElement(access), t.p0,
                                      t.p1, t.jsgraph.Int32Constant(1024), val,
                                      t.start, t.start);
@@ -1444,10 +1455,10 @@ TEST(LowerStoreElement_to_store) {
     CheckElementAccessArithmetic(access, store);
 
     StoreRepresentation rep = OpParameter<StoreRepresentation>(store);
-    if (machine_reps[i] & kRepTagged) {
+    if (kMachineReps[i] & kRepTagged) {
       CHECK_EQ(kFullWriteBarrier, rep.write_barrier_kind());
     }
-    CHECK_EQ(machine_reps[i], rep.machine_type());
+    CHECK_EQ(kMachineReps[i], rep.machine_type());
   }
 }
 
@@ -1720,11 +1731,11 @@ TEST(NumberDivide_TruncatingToInt32) {
     TestingGraph t(Type::Signed32());
     Node* k = t.jsgraph.Constant(constants[i]);
     Node* div = t.graph()->NewNode(t.simplified()->NumberDivide(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToInt32(), div);
-    t.Return(trunc);
+    Node* use = t.Use(div, kMachInt32);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kInt32Div, div->opcode());
+    CHECK_EQ(IrOpcode::kInt32Div, use->InputAt(0)->opcode());
   }
 }
 
@@ -1761,11 +1772,11 @@ TEST(NumberDivide_TruncatingToUint32) {
     TestingGraph t(Type::Unsigned32());
     Node* k = t.jsgraph.Constant(constants[i]);
     Node* div = t.graph()->NewNode(t.simplified()->NumberDivide(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToUint32(), div);
-    t.Return(trunc);
+    Node* use = t.Use(div, kMachUint32);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kUint32Div, div->opcode());
+    CHECK_EQ(IrOpcode::kUint32Div, use->InputAt(0)->opcode());
   }
 }
 
@@ -1795,28 +1806,39 @@ TEST(RunNumberDivide_TruncatingToUint32) {
 
 
 TEST(NumberDivide_BadConstants) {
-  int32_t constants[] = {-1, 0};
-
-  for (size_t i = 0; i < arraysize(constants); i++) {
+  {
     TestingGraph t(Type::Signed32());
-    Node* k = t.jsgraph.Constant(constants[i]);
+    Node* k = t.jsgraph.Constant(-1);
     Node* div = t.graph()->NewNode(t.simplified()->NumberDivide(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToInt32(), div);
-    t.Return(trunc);
+    Node* use = t.Use(div, kMachInt32);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kFloat64Div, div->opcode());
+    CHECK_EQ(IrOpcode::kInt32Sub, use->InputAt(0)->opcode());
+  }
+
+  {
+    TestingGraph t(Type::Signed32());
+    Node* k = t.jsgraph.Constant(0);
+    Node* div = t.graph()->NewNode(t.simplified()->NumberDivide(), t.p0, k);
+    Node* use = t.Use(div, kMachInt32);
+    t.Return(use);
+    t.Lower();
+
+    CHECK_EQ(IrOpcode::kInt32Constant, use->InputAt(0)->opcode());
+    CHECK_EQ(0, OpParameter<int32_t>(use->InputAt(0)));
   }
 
   {
     TestingGraph t(Type::Unsigned32());
     Node* k = t.jsgraph.Constant(0);
     Node* div = t.graph()->NewNode(t.simplified()->NumberDivide(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToUint32(), div);
-    t.Return(trunc);
+    Node* use = t.Use(div, kMachUint32);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kFloat64Div, div->opcode());
+    CHECK_EQ(IrOpcode::kInt32Constant, use->InputAt(0)->opcode());
+    CHECK_EQ(0, OpParameter<int32_t>(use->InputAt(0)));
   }
 }
 
@@ -1828,11 +1850,11 @@ TEST(NumberModulus_TruncatingToInt32) {
     TestingGraph t(Type::Signed32());
     Node* k = t.jsgraph.Constant(constants[i]);
     Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToInt32(), mod);
-    t.Return(trunc);
+    Node* use = t.Use(mod, kMachInt32);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kInt32Mod, mod->opcode());
+    CHECK_EQ(IrOpcode::kInt32Mod, use->InputAt(0)->opcode());
   }
 }
 
@@ -1870,10 +1892,10 @@ TEST(NumberModulus_TruncatingToUint32) {
     Node* k = t.jsgraph.Constant(constants[i]);
     Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
     Node* trunc = t.graph()->NewNode(t.simplified()->NumberToUint32(), mod);
-    t.Return(trunc);
+    Node* ret = t.Return(trunc);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kUint32Mod, mod->opcode());
+    CHECK_EQ(IrOpcode::kUint32Mod, ret->InputAt(0)->opcode());
   }
 }
 
@@ -1919,42 +1941,67 @@ TEST(NumberModulus_Int32) {
 
 
 TEST(NumberModulus_Uint32) {
-  double constants[] = {1, 3, 100, 1000, 100998348};
+  const double kConstants[] = {2, 100, 1000, 1024, 2048};
+  const MachineType kTypes[] = {kMachInt32, kMachUint32};
 
-  for (size_t i = 0; i < arraysize(constants); i++) {
-    TestingGraph t(Type::Unsigned32());
-    Node* k = t.jsgraph.Constant(constants[i]);
-    Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
-    t.Return(mod);
-    t.Lower();
+  for (auto const type : kTypes) {
+    for (auto const c : kConstants) {
+      TestingGraph t(Type::Unsigned32());
+      Node* k = t.jsgraph.Constant(c);
+      Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
+      Node* use = t.Use(mod, type);
+      t.Return(use);
+      t.Lower();
 
-    CHECK_EQ(IrOpcode::kUint32Mod, mod->opcode());
+      CHECK_EQ(IrOpcode::kUint32Mod, use->InputAt(0)->opcode());
+    }
   }
 }
 
 
-TEST(NumberModulus_BadConstants) {
-  int32_t constants[] = {-1, 0};
+TEST(PhiRepresentation) {
+  HandleAndZoneScope scope;
+  Zone* z = scope.main_zone();
 
-  for (size_t i = 0; i < arraysize(constants); i++) {
-    TestingGraph t(Type::Signed32());
-    Node* k = t.jsgraph.Constant(constants[i]);
-    Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToInt32(), mod);
-    t.Return(trunc);
+  Factory* f = z->isolate()->factory();
+  Handle<Object> range_min = f->NewNumber(-1e13);
+  Handle<Object> range_max = f->NewNumber(1e+15);
+  Type* range = Type::Range(range_min, range_max, z);
+
+  struct TestData {
+    Type* arg1;
+    Type* arg2;
+    MachineType use;
+    MachineTypeUnion expected;
+  };
+
+  TestData test_data[] = {
+      {Type::Signed32(), Type::Unsigned32(), kMachInt32,
+       kRepWord32 | kTypeNumber},
+      {range, range, kMachUint32, kRepWord32 | kTypeNumber},
+      {Type::Signed32(), Type::Signed32(), kMachInt32, kMachInt32},
+      {Type::Unsigned32(), Type::Unsigned32(), kMachInt32, kMachUint32},
+      {Type::Number(), Type::Signed32(), kMachInt32, kMachFloat64},
+      {Type::Signed32(), Type::String(), kMachInt32, kMachAnyTagged}};
+
+  for (auto const d : test_data) {
+    TestingGraph t(d.arg1, d.arg2, Type::Boolean());
+
+    Node* br = t.graph()->NewNode(t.common()->Branch(), t.p2, t.start);
+    Node* tb = t.graph()->NewNode(t.common()->IfTrue(), br);
+    Node* fb = t.graph()->NewNode(t.common()->IfFalse(), br);
+    Node* m = t.graph()->NewNode(t.common()->Merge(2), tb, fb);
+
+    Node* phi =
+        t.graph()->NewNode(t.common()->Phi(kMachAnyTagged, 2), t.p0, t.p1, m);
+
+    Bounds phi_bounds = Bounds::Either(Bounds(d.arg1), Bounds(d.arg2), z);
+    NodeProperties::SetBounds(phi, phi_bounds);
+
+    Node* use = t.Use(phi, d.use);
+    t.Return(use);
     t.Lower();
 
-    CHECK_EQ(IrOpcode::kFloat64Mod, mod->opcode());
-  }
-
-  {
-    TestingGraph t(Type::Unsigned32());
-    Node* k = t.jsgraph.Constant(0);
-    Node* mod = t.graph()->NewNode(t.simplified()->NumberModulus(), t.p0, k);
-    Node* trunc = t.graph()->NewNode(t.simplified()->NumberToUint32(), mod);
-    t.Return(trunc);
-    t.Lower();
-
-    CHECK_EQ(IrOpcode::kFloat64Mod, mod->opcode());
+    CHECK_EQ(d.expected, OpParameter<MachineType>(phi));
   }
 }

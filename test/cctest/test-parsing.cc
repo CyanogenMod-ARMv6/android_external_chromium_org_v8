@@ -1814,6 +1814,33 @@ TEST(NoErrorsEvalAndArgumentsStrict) {
 }
 
 
+#define FUTURE_STRICT_RESERVED_WORDS(V) \
+  V(implements)                         \
+  V(interface)                          \
+  V(let)                                \
+  V(package)                            \
+  V(private)                            \
+  V(protected)                          \
+  V(public)                             \
+  V(static)                             \
+  V(yield)
+
+
+#define FUTURE_STRICT_RESERVED_STATEMENTS(NAME) \
+  "var " #NAME ";",                             \
+  "var foo, " #NAME ";",                        \
+  "try { } catch (" #NAME ") { }",              \
+  "function " #NAME "() { }",                   \
+  "(function " #NAME "() { })",                 \
+  "function foo(" #NAME ") { }",                \
+  "function foo(bar, " #NAME ") { }",           \
+  #NAME " = 1;",                                \
+  #NAME " += 1;",                               \
+  "var foo = " #NAME " = 1;",                   \
+  "++" #NAME ";",                               \
+  #NAME " ++;",
+
+
 TEST(ErrorsFutureStrictReservedWords) {
   // Tests that both preparsing and parsing produce the right kind of errors for
   // using future strict reserved words as identifiers. Without the strict mode,
@@ -1826,24 +1853,19 @@ TEST(ErrorsFutureStrictReservedWords) {
     { NULL, NULL }
   };
 
-  const char* statement_data[] = {
-    "var interface;",
-    "var foo, interface;",
-    "try { } catch (interface) { }",
-    "function interface() { }",
-    "function foo(interface) { }",
-    "function foo(bar, interface) { }",
-    "interface = 1;",
-    "var foo = interface = 1;",
-    "++interface;",
-    "interface++;",
-    "var yield = 13;",
+  const char* statement_data[] {
+    FUTURE_STRICT_RESERVED_WORDS(FUTURE_STRICT_RESERVED_STATEMENTS)
     NULL
   };
 
   static const ParserFlag always_flags[] = {kAllowArrowFunctions};
   RunParserSyncTest(context_data, statement_data, kError, NULL, 0, always_flags,
                     arraysize(always_flags));
+
+  static const ParserFlag classes_flags[] = {
+      kAllowArrowFunctions, kAllowClasses, kAllowHarmonyScoping};
+  RunParserSyncTest(context_data, statement_data, kError, NULL, 0,
+                    classes_flags, arraysize(classes_flags));
 }
 
 
@@ -1856,23 +1878,18 @@ TEST(NoErrorsFutureStrictReservedWords) {
   };
 
   const char* statement_data[] = {
-    "var interface;",
-    "var foo, interface;",
-    "try { } catch (interface) { }",
-    "function interface() { }",
-    "function foo(interface) { }",
-    "function foo(bar, interface) { }",
-    "interface = 1;",
-    "var foo = interface = 1;",
-    "++interface;",
-    "interface++;",
-    "var yield = 13;",
+    FUTURE_STRICT_RESERVED_WORDS(FUTURE_STRICT_RESERVED_STATEMENTS)
     NULL
   };
 
   static const ParserFlag always_flags[] = {kAllowArrowFunctions};
   RunParserSyncTest(context_data, statement_data, kSuccess, NULL, 0,
                     always_flags, arraysize(always_flags));
+
+  static const ParserFlag classes_flags[] = {
+      kAllowArrowFunctions, kAllowClasses, kAllowHarmonyScoping};
+  RunParserSyncTest(context_data, statement_data, kSuccess, NULL, 0,
+                    classes_flags, arraysize(classes_flags));
 }
 
 
@@ -2252,12 +2269,13 @@ TEST(ErrorsIllegalWordsAsLabelsStrict) {
     { NULL, NULL }
   };
 
+#define LABELLED_WHILE(NAME) #NAME ": while (true) { break " #NAME "; }",
   const char* statement_data[] = {
     "super: while(true) { break super; }",
-    "interface: while(true) { break interface; }",
-    "yield: while(true) { break yield; }",
+    FUTURE_STRICT_RESERVED_WORDS(LABELLED_WHILE)
     NULL
   };
+#undef LABELLED_WHILE
 
   RunParserSyncTest(context_data, statement_data, kError);
 }
@@ -2281,6 +2299,27 @@ TEST(NoErrorsIllegalWordsAsLabels) {
     "arguments: while(true) { break arguments; }",
     NULL
   };
+
+  static const ParserFlag always_flags[] = {kAllowArrowFunctions};
+  RunParserSyncTest(context_data, statement_data, kSuccess, NULL, 0,
+                    always_flags, arraysize(always_flags));
+}
+
+
+TEST(NoErrorsFutureStrictReservedAsLabelsSloppy) {
+  const char* context_data[][2] = {
+    { "", ""},
+    { "function test_func() {", "}" },
+    { "() => {", "}" },
+    { NULL, NULL }
+  };
+
+#define LABELLED_WHILE(NAME) #NAME ": while (true) { break " #NAME "; }",
+  const char* statement_data[] {
+    FUTURE_STRICT_RESERVED_WORDS(LABELLED_WHILE)
+    NULL
+  };
+#undef LABELLED_WHILE
 
   static const ParserFlag always_flags[] = {kAllowArrowFunctions};
   RunParserSyncTest(context_data, statement_data, kSuccess, NULL, 0,
@@ -3273,9 +3312,7 @@ TEST(InnerAssignment) {
           i::Parser parser(&info, &parse_info);
           parser.set_allow_harmony_scoping(true);
           CHECK(parser.Parse());
-          CHECK(i::Rewriter::Rewrite(&info));
-          CHECK(i::Scope::Analyze(&info));
-          CHECK(i::AstNumbering::Renumber(info.function(), info.zone()));
+          CHECK(i::Compiler::Analyze(&info));
           CHECK(info.function() != NULL);
 
           i::Scope* scope = info.function()->scope();
@@ -4041,9 +4078,6 @@ TEST(ClassConstructorNoErrors) {
 
 
 TEST(ClassMultipleConstructorErrors) {
-  // We currently do not allow any duplicate properties in class bodies. This
-  // test ensures that when we change that we still throw on duplicate
-  // constructors.
   const char* context_data[][2] = {{"class C {", "}"},
                                    {"(class {", "});"},
                                    {NULL, NULL}};
@@ -4061,9 +4095,7 @@ TEST(ClassMultipleConstructorErrors) {
 }
 
 
-// TODO(arv): We should allow duplicate property names.
-// https://code.google.com/p/v8/issues/detail?id=3570
-DISABLED_TEST(ClassMultiplePropertyNamesNoErrors) {
+TEST(ClassMultiplePropertyNamesNoErrors) {
   const char* context_data[][2] = {{"class C {", "}"},
                                    {"(class {", "});"},
                                    {NULL, NULL}};
@@ -4072,6 +4104,8 @@ DISABLED_TEST(ClassMultiplePropertyNamesNoErrors) {
     "constructor() {}; static constructor() {}",
     "m() {}; static m() {}",
     "m() {}; m() {}",
+    "static m() {}; static m() {}",
+    "get m() {}; set m(_) {}; get m() {}; set m(_) {};",
     NULL};
 
   static const ParserFlag always_flags[] = {
@@ -4257,4 +4291,18 @@ TEST(ConstParsingInForInError) {
   static const ParserFlag always_flags[] = {kAllowHarmonyScoping};
   RunParserSyncTest(context_data, data, kError, NULL, 0, always_flags,
                     arraysize(always_flags));
+}
+
+
+TEST(InvalidUnicodeEscapes) {
+  const char* context_data[][2] = {{"", ""},
+                                   {"'use strict';", ""},
+                                   {NULL, NULL}};
+  const char* data[] = {
+    "var foob\\u123r = 0;",
+    "var \\u123roo = 0;",
+    "\"foob\\u123rr\"",
+    "/regex/g\\u123r",
+    NULL};
+  RunParserSyncTest(context_data, data, kError);
 }

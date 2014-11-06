@@ -188,6 +188,9 @@ namespace internal {
   F(ToMethod, 2, 1)                                        \
   F(HomeObjectSymbol, 0, 1)                                \
   F(DefineClass, 6, 1)                                     \
+  F(DefineClassMethod, 3, 1)                               \
+  F(DefineClassGetter, 3, 1)                               \
+  F(DefineClassSetter, 3, 1)                               \
   F(ClassGetSourceCode, 1, 1)                              \
   F(ThrowNonMethodError, 0, 1)                             \
   F(ThrowUnsupportedSuperError, 0, 1)                      \
@@ -307,6 +310,7 @@ namespace internal {
   F(SetGetSize, 1, 1)                                  \
                                                        \
   F(SetIteratorInitialize, 3, 1)                       \
+  F(SetIteratorClone, 1, 1)                            \
   F(SetIteratorNext, 2, 1)                             \
                                                        \
   /* Harmony maps */                                   \
@@ -319,6 +323,7 @@ namespace internal {
   F(MapGetSize, 1, 1)                                  \
                                                        \
   F(MapIteratorInitialize, 3, 1)                       \
+  F(MapIteratorClone, 1, 1)                            \
   F(MapIteratorNext, 2, 1)                             \
                                                        \
   /* Harmony weak maps and sets */                     \
@@ -521,7 +526,7 @@ namespace internal {
 #define RUNTIME_FUNCTION_LIST_RETURN_PAIR(F)              \
   F(LoadLookupSlot, 2, 2)                                 \
   F(LoadLookupSlotNoReferenceError, 2, 2)                 \
-  F(ResolvePossiblyDirectEval, 5, 2)                      \
+  F(ResolvePossiblyDirectEval, 6, 2)                      \
   F(ForInInit, 2, 2) /* TODO(turbofan): Only temporary */ \
   F(ForInNext, 4, 2) /* TODO(turbofan): Only temporary */
 

@@ -31,6 +31,7 @@ using namespace v8::internal::compiler;
 #if V8_TURBOFAN_TARGET
 
 typedef RawMachineAssembler::Label MLabel;
+typedef v8::internal::compiler::InstructionSequence TestInstrSeq;
 
 static Handle<JSFunction> NewFunction(const char* source) {
   return v8::Utils::OpenHandle(
@@ -47,9 +48,7 @@ class DeoptCodegenTester {
         bailout_id(-1) {
     CHECK(Parser::Parse(&info));
     info.SetOptimizing(BailoutId::None(), Handle<Code>(function->code()));
-    CHECK(Rewriter::Rewrite(&info));
-    CHECK(Scope::Analyze(&info));
-    CHECK(AstNumbering::Renumber(info.function(), info.zone()));
+    CHECK(Compiler::Analyze(&info));
     CHECK(Compiler::EnsureDeoptimizationSupport(&info));
 
     DCHECK(info.shared_info()->has_deoptimization_support());
@@ -66,29 +65,35 @@ class DeoptCodegenTester {
     }
 
     // Initialize the codegen and generate code.
-    Linkage* linkage = new (scope_->main_zone()) Linkage(&info);
-    code = new v8::internal::compiler::InstructionSequence(scope_->main_zone(),
-                                                           graph, schedule);
+    Linkage* linkage = new (scope_->main_zone()) Linkage(info.zone(), &info);
+    InstructionBlocks* instruction_blocks =
+        TestInstrSeq::InstructionBlocksFor(scope_->main_zone(), schedule);
+    code = new TestInstrSeq(scope_->main_zone(), instruction_blocks);
     SourcePositionTable source_positions(graph);
-    InstructionSelector selector(scope_->main_zone(), linkage, code, schedule,
-                                 &source_positions);
+    InstructionSelector selector(scope_->main_zone(), graph, linkage, code,
+                                 schedule, &source_positions);
     selector.SelectInstructions();
 
     if (FLAG_trace_turbo) {
+      PrintableInstructionSequence printable = {
+          RegisterConfiguration::ArchDefault(), code};
       os << "----- Instruction sequence before register allocation -----\n"
-         << *code;
+         << printable;
     }
 
     Frame frame;
-    RegisterAllocator allocator(scope_->main_zone(), &frame, &info, code);
+    RegisterAllocator allocator(RegisterConfiguration::ArchDefault(),
+                                scope_->main_zone(), &frame, code);
     CHECK(allocator.Allocate());
 
     if (FLAG_trace_turbo) {
+      PrintableInstructionSequence printable = {
+          RegisterConfiguration::ArchDefault(), code};
       os << "----- Instruction sequence after register allocation -----\n"
-         << *code;
+         << printable;
     }
 
-    compiler::CodeGenerator generator(&frame, linkage, code);
+    compiler::CodeGenerator generator(&frame, linkage, code, &info);
     result_code = generator.GenerateCode();
 
 #ifdef OBJECT_PRINT
@@ -105,7 +110,7 @@ class DeoptCodegenTester {
   CompilationInfo info;
   BailoutId bailout_id;
   Handle<Code> result_code;
-  v8::internal::compiler::InstructionSequence* code;
+  TestInstrSeq* code;
   Graph* graph;
 };
 

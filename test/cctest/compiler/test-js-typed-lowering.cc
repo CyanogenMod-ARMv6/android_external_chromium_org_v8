@@ -508,8 +508,12 @@ TEST(JSToBoolean) {
 
   {  // ToBoolean(string)
     Node* r = R.ReduceUnop(op, Type::String());
-    // TODO(titzer): test will break with better js-typed-lowering
-    CHECK_EQ(IrOpcode::kJSToBoolean, r->opcode());
+    CHECK_EQ(IrOpcode::kBooleanNot, r->opcode());
+    Node* i = r->InputAt(0);
+    CHECK_EQ(IrOpcode::kNumberEqual, i->opcode());
+    Node* j = i->InputAt(0);
+    CHECK_EQ(IrOpcode::kLoadField, j->opcode());
+    // ToBoolean(x:string) => BooleanNot(NumberEqual(x.length, #0))
   }
 
   {  // ToBoolean(object)
@@ -863,9 +867,9 @@ class BinopEffectsTester {
   Node* CheckConverted(IrOpcode::Value opcode, Node* node, bool effects) {
     CHECK_EQ(opcode, node->opcode());
     if (effects) {
-      CHECK_LT(0, OperatorProperties::GetEffectInputCount(node->op()));
+      CHECK_LT(0, node->op()->EffectInputCount());
     } else {
-      CHECK_EQ(0, OperatorProperties::GetEffectInputCount(node->op()));
+      CHECK_EQ(0, node->op()->EffectInputCount());
     }
     return node;
   }

@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/compiler/linkage.h"
-
 #include "src/code-stubs.h"
 #include "src/compiler.h"
+#include "src/compiler/linkage.h"
 #include "src/compiler/node.h"
 #include "src/compiler/pipeline.h"
 #include "src/scopes.h"
@@ -39,28 +38,32 @@ std::ostream& operator<<(std::ostream& os, const CallDescriptor& d) {
 }
 
 
-Linkage::Linkage(CompilationInfo* info) : info_(info) {
+CallDescriptor* Linkage::ComputeIncoming(Zone* zone, CompilationInfo* info) {
   if (info->function() != NULL) {
     // If we already have the function literal, use the number of parameters
     // plus the receiver.
-    incoming_ = GetJSCallDescriptor(1 + info->function()->parameter_count());
-  } else if (!info->closure().is_null()) {
+    return GetJSCallDescriptor(1 + info->function()->parameter_count(), zone,
+                               CallDescriptor::kNoFlags);
+  }
+  if (!info->closure().is_null()) {
     // If we are compiling a JS function, use a JS call descriptor,
     // plus the receiver.
     SharedFunctionInfo* shared = info->closure()->shared();
-    incoming_ = GetJSCallDescriptor(1 + shared->formal_parameter_count());
-  } else if (info->code_stub() != NULL) {
+    return GetJSCallDescriptor(1 + shared->formal_parameter_count(), zone,
+                               CallDescriptor::kNoFlags);
+  }
+  if (info->code_stub() != NULL) {
     // Use the code stub interface descriptor.
     CallInterfaceDescriptor descriptor =
         info->code_stub()->GetCallInterfaceDescriptor();
-    incoming_ = GetStubCallDescriptor(descriptor);
-  } else {
-    incoming_ = NULL;  // TODO(titzer): ?
+    return GetStubCallDescriptor(descriptor, 0, CallDescriptor::kNoFlags, zone);
   }
+  return NULL;  // TODO(titzer): ?
 }
 
 
-FrameOffset Linkage::GetFrameOffset(int spill_slot, Frame* frame, int extra) {
+FrameOffset Linkage::GetFrameOffset(int spill_slot, Frame* frame,
+                                    int extra) const {
   if (frame->GetSpillSlotCount() > 0 || incoming_->IsJSFunctionCall() ||
       incoming_->kind() == CallDescriptor::kCallAddress) {
     int offset;
@@ -87,24 +90,23 @@ FrameOffset Linkage::GetFrameOffset(int spill_slot, Frame* frame, int extra) {
 }
 
 
-CallDescriptor* Linkage::GetJSCallDescriptor(int parameter_count) {
-  return GetJSCallDescriptor(parameter_count, this->info_->zone());
+CallDescriptor* Linkage::GetJSCallDescriptor(
+    int parameter_count, CallDescriptor::Flags flags) const {
+  return GetJSCallDescriptor(parameter_count, zone_, flags);
 }
 
 
 CallDescriptor* Linkage::GetRuntimeCallDescriptor(
     Runtime::FunctionId function, int parameter_count,
-    Operator::Properties properties) {
-  return GetRuntimeCallDescriptor(function, parameter_count, properties,
-                                  this->info_->zone());
+    Operator::Properties properties) const {
+  return GetRuntimeCallDescriptor(function, parameter_count, properties, zone_);
 }
 
 
 CallDescriptor* Linkage::GetStubCallDescriptor(
-    CallInterfaceDescriptor descriptor, int stack_parameter_count,
-    CallDescriptor::Flags flags) {
-  return GetStubCallDescriptor(descriptor, stack_parameter_count, flags,
-                               this->info_->zone());
+    const CallInterfaceDescriptor& descriptor, int stack_parameter_count,
+    CallDescriptor::Flags flags) const {
+  return GetStubCallDescriptor(descriptor, stack_parameter_count, flags, zone_);
 }
 
 
@@ -195,6 +197,7 @@ bool Linkage::NeedsFrameState(Runtime::FunctionId function) {
     case Runtime::kStoreLookupSlot:
     case Runtime::kStringBuilderConcat:
     case Runtime::kStringBuilderJoin:
+    case Runtime::kStringMatch:
     case Runtime::kStringReplaceGlobalRegExpWithString:
     case Runtime::kThrowNonMethodError:
     case Runtime::kThrowNotDateError:
@@ -217,7 +220,8 @@ bool Linkage::NeedsFrameState(Runtime::FunctionId function) {
 // Provide unimplemented methods on unsupported architectures, to at least link.
 //==============================================================================
 #if !V8_TURBOFAN_BACKEND
-CallDescriptor* Linkage::GetJSCallDescriptor(int parameter_count, Zone* zone) {
+CallDescriptor* Linkage::GetJSCallDescriptor(int parameter_count, Zone* zone,
+                                             CallDescriptor::Flags flags) {
   UNIMPLEMENTED();
   return NULL;
 }
@@ -232,7 +236,7 @@ CallDescriptor* Linkage::GetRuntimeCallDescriptor(
 
 
 CallDescriptor* Linkage::GetStubCallDescriptor(
-    CallInterfaceDescriptor descriptor, int stack_parameter_count,
+    const CallInterfaceDescriptor& descriptor, int stack_parameter_count,
     CallDescriptor::Flags flags, Zone* zone) {
   UNIMPLEMENTED();
   return NULL;

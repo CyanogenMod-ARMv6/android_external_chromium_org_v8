@@ -21,7 +21,6 @@ class Typer {
   ~Typer();
 
   void Run();
-  void Narrow(Node* node);
 
   Graph* graph() { return graph_; }
   MaybeHandle<Context> context() { return context_; }
@@ -31,7 +30,6 @@ class Typer {
  private:
   class Visitor;
   class RunVisitor;
-  class NarrowVisitor;
   class WidenVisitor;
   class Decorator;
 
@@ -71,6 +69,7 @@ class Typer {
 
   ZoneVector<Handle<Object> > weaken_min_limits_;
   ZoneVector<Handle<Object> > weaken_max_limits_;
+  DISALLOW_COPY_AND_ASSIGN(Typer);
 };
 }
 }

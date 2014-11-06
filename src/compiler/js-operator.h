@@ -14,7 +14,7 @@ namespace compiler {
 
 // Forward declarations.
 class Operator;
-struct JSOperatorBuilderImpl;
+struct JSOperatorGlobalCache;
 
 
 // Defines the arity and the call flags for a JavaScript function call. This is
@@ -195,7 +195,7 @@ const StoreNamedParameters& StoreNamedParametersOf(const Operator* op);
 // Interface for building JavaScript-level operators, e.g. directly from the
 // AST. Most operators have no parameters, thus can be globally shared for all
 // graphs.
-class JSOperatorBuilder FINAL {
+class JSOperatorBuilder FINAL : public ZoneObject {
  public:
   explicit JSOperatorBuilder(Zone* zone);
 
@@ -264,8 +264,10 @@ class JSOperatorBuilder FINAL {
  private:
   Zone* zone() const { return zone_; }
 
-  const JSOperatorBuilderImpl& impl_;
+  const JSOperatorGlobalCache& cache_;
   Zone* const zone_;
+
+  DISALLOW_COPY_AND_ASSIGN(JSOperatorBuilder);
 };
 
 }  // namespace compiler

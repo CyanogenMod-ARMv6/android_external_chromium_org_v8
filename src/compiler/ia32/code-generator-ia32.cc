@@ -247,6 +247,9 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kIA32ImulHigh:
       __ imul(i.InputRegister(1));
       break;
+    case kIA32UmulHigh:
+      __ mul(i.InputRegister(1));
+      break;
     case kIA32Idiv:
       __ cdq();
       __ idiv(i.InputOperand(1));
@@ -314,16 +317,16 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       __ ucomisd(i.InputDoubleRegister(0), i.InputOperand(1));
       break;
     case kSSEFloat64Add:
-      __ addsd(i.InputDoubleRegister(0), i.InputDoubleRegister(1));
+      __ addsd(i.InputDoubleRegister(0), i.InputOperand(1));
       break;
     case kSSEFloat64Sub:
-      __ subsd(i.InputDoubleRegister(0), i.InputDoubleRegister(1));
+      __ subsd(i.InputDoubleRegister(0), i.InputOperand(1));
       break;
     case kSSEFloat64Mul:
-      __ mulsd(i.InputDoubleRegister(0), i.InputDoubleRegister(1));
+      __ mulsd(i.InputDoubleRegister(0), i.InputOperand(1));
       break;
     case kSSEFloat64Div:
-      __ divsd(i.InputDoubleRegister(0), i.InputDoubleRegister(1));
+      __ divsd(i.InputDoubleRegister(0), i.InputOperand(1));
       break;
     case kSSEFloat64Mod: {
       // TODO(dcarney): alignment is wrong.
@@ -353,6 +356,24 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kSSEFloat64Sqrt:
       __ sqrtsd(i.OutputDoubleRegister(), i.InputOperand(0));
       break;
+    case kSSEFloat64Floor: {
+      CpuFeatureScope sse_scope(masm(), SSE4_1);
+      __ roundsd(i.OutputDoubleRegister(), i.InputDoubleRegister(0),
+                 v8::internal::Assembler::kRoundDown);
+      break;
+    }
+    case kSSEFloat64Ceil: {
+      CpuFeatureScope sse_scope(masm(), SSE4_1);
+      __ roundsd(i.OutputDoubleRegister(), i.InputDoubleRegister(0),
+                 v8::internal::Assembler::kRoundUp);
+      break;
+    }
+    case kSSEFloat64RoundTruncate: {
+      CpuFeatureScope sse_scope(masm(), SSE4_1);
+      __ roundsd(i.OutputDoubleRegister(), i.InputDoubleRegister(0),
+                 v8::internal::Assembler::kRoundToZero);
+      break;
+    }
     case kSSECvtss2sd:
       __ cvtss2sd(i.OutputDoubleRegister(), i.InputOperand(0));
       break;
@@ -793,7 +814,7 @@ void CodeGenerator::AssemblePrologue() {
       frame->SetRegisterSaveAreaSize(register_save_area_size);
     }
   } else if (descriptor->IsJSFunctionCall()) {
-    CompilationInfo* info = linkage()->info();
+    CompilationInfo* info = this->info();
     __ Prologue(info->IsCodePreAgingActive());
     frame->SetRegisterSaveAreaSize(
         StandardFrameConstants::kFixedFrameSizeFromFp);
@@ -1023,7 +1044,7 @@ void CodeGenerator::AddNopForSmiCodeInlining() { __ nop(); }
 
 void CodeGenerator::EnsureSpaceForLazyDeopt() {
   int space_needed = Deoptimizer::patch_size();
-  if (!linkage()->info()->IsStub()) {
+  if (!info()->IsStub()) {
     // Ensure that we have enough space after the previous lazy-bailout
     // instruction for patching the code here.
     int current_pc = masm()->pc_offset();

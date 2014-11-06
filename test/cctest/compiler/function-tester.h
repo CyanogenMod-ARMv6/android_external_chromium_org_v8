@@ -165,9 +165,7 @@ class FunctionTester : public InitializedHandleScope {
     if (flags_ & CompilationInfo::kTypingEnabled) {
       info.MarkAsTypingEnabled();
     }
-    CHECK(Rewriter::Rewrite(&info));
-    CHECK(Scope::Analyze(&info));
-    CHECK(AstNumbering::Renumber(info.function(), info.zone()));
+    CHECK(Compiler::Analyze(&info));
     CHECK(Compiler::EnsureDeoptimizationSupport(&info));
 
     Pipeline pipeline(&info);
@@ -215,13 +213,11 @@ class FunctionTester : public InitializedHandleScope {
     CHECK(Parser::Parse(&info));
     info.SetOptimizing(BailoutId::None(),
                        Handle<Code>(function->shared()->code()));
-    CHECK(Rewriter::Rewrite(&info));
-    CHECK(Scope::Analyze(&info));
-    CHECK(AstNumbering::Renumber(info.function(), info.zone()));
+    CHECK(Compiler::Analyze(&info));
     CHECK(Compiler::EnsureDeoptimizationSupport(&info));
 
     Pipeline pipeline(&info);
-    Linkage linkage(&info);
+    Linkage linkage(info.zone(), &info);
     Handle<Code> code = pipeline.GenerateCodeForMachineGraph(&linkage, graph);
     CHECK(!code.is_null());
     function->ReplaceCode(*code);

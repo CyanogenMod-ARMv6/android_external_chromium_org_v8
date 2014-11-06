@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <cmath>
 #include <functional>
 #include <limits>
 
 #include "src/base/bits.h"
+#include "src/codegen.h"
 #include "src/compiler/generic-node-inl.h"
 #include "test/cctest/cctest.h"
 #include "test/cctest/compiler/codegen-tester.h"
@@ -59,16 +61,16 @@ TEST(CodeGenInt32Binop) {
   RawMachineAssemblerTester<void> m;
 
   const Operator* kOps[] = {
-      m.machine()->Word32And(),            m.machine()->Word32Or(),
-      m.machine()->Word32Xor(),            m.machine()->Word32Shl(),
-      m.machine()->Word32Shr(),            m.machine()->Word32Sar(),
-      m.machine()->Word32Equal(),          m.machine()->Int32Add(),
-      m.machine()->Int32Sub(),             m.machine()->Int32Mul(),
-      m.machine()->Int32MulHigh(),         m.machine()->Int32Div(),
-      m.machine()->Uint32Div(),            m.machine()->Int32Mod(),
-      m.machine()->Uint32Mod(),            m.machine()->Int32LessThan(),
-      m.machine()->Int32LessThanOrEqual(), m.machine()->Uint32LessThan(),
-      m.machine()->Uint32LessThanOrEqual()};
+      m.machine()->Word32And(),      m.machine()->Word32Or(),
+      m.machine()->Word32Xor(),      m.machine()->Word32Shl(),
+      m.machine()->Word32Shr(),      m.machine()->Word32Sar(),
+      m.machine()->Word32Equal(),    m.machine()->Int32Add(),
+      m.machine()->Int32Sub(),       m.machine()->Int32Mul(),
+      m.machine()->Int32MulHigh(),   m.machine()->Int32Div(),
+      m.machine()->Uint32Div(),      m.machine()->Int32Mod(),
+      m.machine()->Uint32Mod(),      m.machine()->Uint32MulHigh(),
+      m.machine()->Int32LessThan(),  m.machine()->Int32LessThanOrEqual(),
+      m.machine()->Uint32LessThan(), m.machine()->Uint32LessThanOrEqual()};
 
   for (size_t i = 0; i < arraysize(kOps); ++i) {
     for (int j = 0; j < 8; j++) {
@@ -1498,6 +1500,20 @@ TEST(RunInt32MulAndInt32SubP) {
 }
 
 
+TEST(RunUint32MulHighP) {
+  RawMachineAssemblerTester<int32_t> m;
+  Int32BinopTester bt(&m);
+  bt.AddReturn(m.Uint32MulHigh(bt.param0, bt.param1));
+  FOR_UINT32_INPUTS(i) {
+    FOR_UINT32_INPUTS(j) {
+      int32_t expected = bit_cast<int32_t>(static_cast<uint32_t>(
+          (static_cast<uint64_t>(*i) * static_cast<uint64_t>(*j)) >> 32));
+      CHECK_EQ(expected, bt.call(bit_cast<int32_t>(*i), bit_cast<int32_t>(*j)));
+    }
+  }
+}
+
+
 TEST(RunInt32DivP) {
   {
     RawMachineAssemblerTester<int32_t> m;
@@ -2810,16 +2826,17 @@ TEST(RunDeadInt32Binops) {
   RawMachineAssemblerTester<int32_t> m;
 
   const Operator* kOps[] = {
-      m.machine()->Word32And(),      m.machine()->Word32Or(),
-      m.machine()->Word32Xor(),      m.machine()->Word32Shl(),
-      m.machine()->Word32Shr(),      m.machine()->Word32Sar(),
-      m.machine()->Word32Ror(),      m.machine()->Word32Equal(),
-      m.machine()->Int32Add(),       m.machine()->Int32Sub(),
-      m.machine()->Int32Mul(),       m.machine()->Int32MulHigh(),
-      m.machine()->Int32Div(),       m.machine()->Uint32Div(),
-      m.machine()->Int32Mod(),       m.machine()->Uint32Mod(),
-      m.machine()->Int32LessThan(),  m.machine()->Int32LessThanOrEqual(),
-      m.machine()->Uint32LessThan(), m.machine()->Uint32LessThanOrEqual()};
+      m.machine()->Word32And(),            m.machine()->Word32Or(),
+      m.machine()->Word32Xor(),            m.machine()->Word32Shl(),
+      m.machine()->Word32Shr(),            m.machine()->Word32Sar(),
+      m.machine()->Word32Ror(),            m.machine()->Word32Equal(),
+      m.machine()->Int32Add(),             m.machine()->Int32Sub(),
+      m.machine()->Int32Mul(),             m.machine()->Int32MulHigh(),
+      m.machine()->Int32Div(),             m.machine()->Uint32Div(),
+      m.machine()->Int32Mod(),             m.machine()->Uint32Mod(),
+      m.machine()->Uint32MulHigh(),        m.machine()->Int32LessThan(),
+      m.machine()->Int32LessThanOrEqual(), m.machine()->Uint32LessThan(),
+      m.machine()->Uint32LessThanOrEqual()};
 
   for (size_t i = 0; i < arraysize(kOps); ++i) {
     RawMachineAssemblerTester<int32_t> m(kMachInt32, kMachInt32);
@@ -4535,4 +4552,171 @@ TEST(RunFloat32Constant) {
   }
 }
 
+
+static double two_30 = 1 << 30;             // 2^30 is a smi boundary.
+static double two_52 = two_30 * (1 << 22);  // 2^52 is a precision boundary.
+static double kValues[] = {0.1,
+                           0.2,
+                           0.49999999999999994,
+                           0.5,
+                           0.7,
+                           1.0 - std::numeric_limits<double>::epsilon(),
+                           -0.1,
+                           -0.49999999999999994,
+                           -0.5,
+                           -0.7,
+                           1.1,
+                           1.0 + std::numeric_limits<double>::epsilon(),
+                           1.5,
+                           1.7,
+                           -1,
+                           -1 + std::numeric_limits<double>::epsilon(),
+                           -1 - std::numeric_limits<double>::epsilon(),
+                           -1.1,
+                           -1.5,
+                           -1.7,
+                           std::numeric_limits<double>::min(),
+                           -std::numeric_limits<double>::min(),
+                           std::numeric_limits<double>::max(),
+                           -std::numeric_limits<double>::max(),
+                           std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity(),
+                           two_30,
+                           two_30 + 0.1,
+                           two_30 + 0.5,
+                           two_30 + 0.7,
+                           two_30 - 1,
+                           two_30 - 1 + 0.1,
+                           two_30 - 1 + 0.5,
+                           two_30 - 1 + 0.7,
+                           -two_30,
+                           -two_30 + 0.1,
+                           -two_30 + 0.5,
+                           -two_30 + 0.7,
+                           -two_30 + 1,
+                           -two_30 + 1 + 0.1,
+                           -two_30 + 1 + 0.5,
+                           -two_30 + 1 + 0.7,
+                           two_52,
+                           two_52 + 0.1,
+                           two_52 + 0.5,
+                           two_52 + 0.5,
+                           two_52 + 0.7,
+                           two_52 + 0.7,
+                           two_52 - 1,
+                           two_52 - 1 + 0.1,
+                           two_52 - 1 + 0.5,
+                           two_52 - 1 + 0.7,
+                           -two_52,
+                           -two_52 + 0.1,
+                           -two_52 + 0.5,
+                           -two_52 + 0.7,
+                           -two_52 + 1,
+                           -two_52 + 1 + 0.1,
+                           -two_52 + 1 + 0.5,
+                           -two_52 + 1 + 0.7,
+                           two_30,
+                           two_30 - 0.1,
+                           two_30 - 0.5,
+                           two_30 - 0.7,
+                           two_30 - 1,
+                           two_30 - 1 - 0.1,
+                           two_30 - 1 - 0.5,
+                           two_30 - 1 - 0.7,
+                           -two_30,
+                           -two_30 - 0.1,
+                           -two_30 - 0.5,
+                           -two_30 - 0.7,
+                           -two_30 + 1,
+                           -two_30 + 1 - 0.1,
+                           -two_30 + 1 - 0.5,
+                           -two_30 + 1 - 0.7,
+                           two_52,
+                           two_52 - 0.1,
+                           two_52 - 0.5,
+                           two_52 - 0.5,
+                           two_52 - 0.7,
+                           two_52 - 0.7,
+                           two_52 - 1,
+                           two_52 - 1 - 0.1,
+                           two_52 - 1 - 0.5,
+                           two_52 - 1 - 0.7,
+                           -two_52,
+                           -two_52 - 0.1,
+                           -two_52 - 0.5,
+                           -two_52 - 0.7,
+                           -two_52 + 1,
+                           -two_52 + 1 - 0.1,
+                           -two_52 + 1 - 0.5,
+                           -two_52 + 1 - 0.7};
+
+
+TEST(RunFloat64Floor) {
+  double input = -1.0;
+  double result = 0.0;
+  RawMachineAssemblerTester<int32_t> m;
+  if (!m.machine()->HasFloat64Floor()) return;
+  m.StoreToPointer(&result, kMachFloat64,
+                   m.Float64Floor(m.LoadFromPointer(&input, kMachFloat64)));
+  m.Return(m.Int32Constant(0));
+  for (size_t i = 0; i < arraysize(kValues); ++i) {
+    input = kValues[i];
+    CHECK_EQ(0, m.Call());
+    double expected = std::floor(kValues[i]);
+    CHECK_EQ(expected, result);
+  }
+}
+
+
+TEST(RunFloat64Ceil) {
+  double input = -1.0;
+  double result = 0.0;
+  RawMachineAssemblerTester<int32_t> m;
+  if (!m.machine()->HasFloat64Ceil()) return;
+  m.StoreToPointer(&result, kMachFloat64,
+                   m.Float64Ceil(m.LoadFromPointer(&input, kMachFloat64)));
+  m.Return(m.Int32Constant(0));
+  for (size_t i = 0; i < arraysize(kValues); ++i) {
+    input = kValues[i];
+    CHECK_EQ(0, m.Call());
+    double expected = std::ceil(kValues[i]);
+    CHECK_EQ(expected, result);
+  }
+}
+
+
+TEST(RunFloat64RoundTruncate) {
+  double input = -1.0;
+  double result = 0.0;
+  RawMachineAssemblerTester<int32_t> m;
+  if (!m.machine()->HasFloat64Ceil()) return;
+  m.StoreToPointer(
+      &result, kMachFloat64,
+      m.Float64RoundTruncate(m.LoadFromPointer(&input, kMachFloat64)));
+  m.Return(m.Int32Constant(0));
+  for (size_t i = 0; i < arraysize(kValues); ++i) {
+    input = kValues[i];
+    CHECK_EQ(0, m.Call());
+    double expected = trunc(kValues[i]);
+    CHECK_EQ(expected, result);
+  }
+}
+
+
+TEST(RunFloat64RoundTiesAway) {
+  double input = -1.0;
+  double result = 0.0;
+  RawMachineAssemblerTester<int32_t> m;
+  if (!m.machine()->HasFloat64RoundTiesAway()) return;
+  m.StoreToPointer(
+      &result, kMachFloat64,
+      m.Float64RoundTiesAway(m.LoadFromPointer(&input, kMachFloat64)));
+  m.Return(m.Int32Constant(0));
+  for (size_t i = 0; i < arraysize(kValues); ++i) {
+    input = kValues[i];
+    CHECK_EQ(0, m.Call());
+    double expected = round(kValues[i]);
+    CHECK_EQ(expected, result);
+  }
+}
 #endif  // V8_TURBOFAN_TARGET

@@ -92,6 +92,20 @@ RUNTIME_FUNCTION(Runtime_SetIteratorInitialize) {
 }
 
 
+RUNTIME_FUNCTION(Runtime_SetIteratorClone) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(JSSetIterator, holder, 0);
+
+  Handle<JSSetIterator> result = isolate->factory()->NewJSSetIterator();
+  result->set_table(holder->table());
+  result->set_index(Smi::FromInt(Smi::cast(holder->index())->value()));
+  result->set_kind(Smi::FromInt(Smi::cast(holder->kind())->value()));
+
+  return *result;
+}
+
+
 RUNTIME_FUNCTION(Runtime_SetIteratorNext) {
   SealHandleScope shs(isolate);
   DCHECK(args.length() == 2);
@@ -197,6 +211,20 @@ RUNTIME_FUNCTION(Runtime_MapIteratorInitialize) {
 }
 
 
+RUNTIME_FUNCTION(Runtime_MapIteratorClone) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(JSMapIterator, holder, 0);
+
+  Handle<JSMapIterator> result = isolate->factory()->NewJSMapIterator();
+  result->set_table(holder->table());
+  result->set_index(Smi::FromInt(Smi::cast(holder->index())->value()));
+  result->set_kind(Smi::FromInt(Smi::cast(holder->kind())->value()));
+
+  return *result;
+}
+
+
 RUNTIME_FUNCTION(Runtime_GetWeakMapEntries) {
   HandleScope scope(isolate);
   DCHECK(args.length() == 1);
@@ -288,6 +316,10 @@ RUNTIME_FUNCTION(Runtime_WeakCollectionDelete) {
   Handle<ObjectHashTable> new_table =
       ObjectHashTable::Remove(table, key, &was_present);
   weak_collection->set_table(*new_table);
+  if (*table != *new_table) {
+    // Zap the old table since we didn't record slots for its elements.
+    table->FillWithHoles(0, table->length());
+  }
   return isolate->heap()->ToBoolean(was_present);
 }
 
@@ -304,6 +336,10 @@ RUNTIME_FUNCTION(Runtime_WeakCollectionSet) {
   RUNTIME_ASSERT(table->IsKey(*key));
   Handle<ObjectHashTable> new_table = ObjectHashTable::Put(table, key, value);
   weak_collection->set_table(*new_table);
+  if (*table != *new_table) {
+    // Zap the old table since we didn't record slots for its elements.
+    table->FillWithHoles(0, table->length());
+  }
   return *weak_collection;
 }
 

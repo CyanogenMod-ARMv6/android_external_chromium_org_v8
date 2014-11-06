@@ -114,6 +114,11 @@ struct MaybeBoolFlag {
 #else
 #define ENABLE_ARMV7_DEFAULT false
 #endif
+#if (defined CAN_USE_ARMV8_INSTRUCTIONS) || !(defined ARM_TEST_NO_FEATURE_PROBE)
+#define ENABLE_ARMV8_DEFAULT true
+#else
+#define ENABLE_ARMV8_DEFAULT false
+#endif
 #if (defined CAN_USE_VFP32DREGS) || !(defined ARM_TEST_NO_FEATURE_PROBE)
 #define ENABLE_32DREGS_DEFAULT true
 #else
@@ -150,53 +155,64 @@ struct MaybeBoolFlag {
 // Flags for language modes and experimental language features.
 DEFINE_BOOL(use_strict, false, "enforce strict mode")
 
-DEFINE_BOOL(es_staging, false, "enable upcoming ES6+ features")
-DEFINE_BOOL(harmony, false, "enable all harmony features (except proxies)")
+DEFINE_BOOL(es_staging, false, "enable all completed harmony features")
+DEFINE_BOOL(harmony, false, "enable all completed harmony features")
 DEFINE_IMPLICATION(harmony, es_staging)
+// TODO(rossberg): activate once we have staged scoping:
+// DEFINE_IMPLICATION(es_staging, harmony)
 
-#define HARMONY_FEATURES(V)                                       \
+// Features that are still work in progress (behind individual flags).
+#define HARMONY_INPROGRESS(V)                                     \
   V(harmony_scoping, "harmony block scoping")                     \
   V(harmony_modules, "harmony modules (implies block scoping)")   \
-  V(harmony_arrays, "harmony arrays")                             \
-  V(harmony_classes, "harmony classes")                           \
+  V(harmony_arrays, "harmony array methods")                      \
+  V(harmony_classes,                                              \
+    "harmony classes (implies block scoping & object literal extension)") \
   V(harmony_object_literals, "harmony object literal extensions") \
-  V(harmony_regexps, "reg-exp related harmony features")          \
+  V(harmony_regexps, "harmony regular expression extensions")     \
   V(harmony_arrow_functions, "harmony arrow functions")           \
-  V(harmony_tostring, "harmony Symbol.toStringTag")
+  V(harmony_tostring, "harmony toString")                         \
+  V(harmony_proxies, "harmony proxies")
 
-#define STAGED_FEATURES(V)              \
-  V(harmony_strings, "harmony strings") \
-  V(harmony_numeric_literals, "harmony numeric literals (0o77, 0b11)")
+// Features that are complete (but still behind --harmony/es-staging flag).
+#define HARMONY_STAGED(V)                      \
+  V(harmony_strings, "harmony string methods") \
+  V(harmony_numeric_literals, "harmony numeric literals")
 
-#define SHIPPING_FEATURES(V)
+// Features that are shipping (turned on by default, but internal flag remains).
+#define HARMONY_SHIPPING(V)
 
-#define FLAG_FEATURES(id, description)           \
+// Once a shipping feature has proved stable in the wild, it will be dropped
+// from HARMONY_SHIPPING, all occurrences of the FLAG_ variable are removed,
+// and associated tests are moved from the harmony directory to the appropriate
+// esN directory.
+
+
+#define FLAG_INPROGRESS_FEATURES(id, description) \
+  DEFINE_BOOL(id, false, "enable " #description " (in progress)")
+HARMONY_INPROGRESS(FLAG_INPROGRESS_FEATURES)
+#undef FLAG_INPROGRESS_FEATURES
+
+// TODO(rossberg): temporary, remove once we have staged scoping.
+// After that, --harmony will be synonymous to --es-staging.
+DEFINE_IMPLICATION(harmony, harmony_scoping)
+
+#define FLAG_STAGED_FEATURES(id, description) \
   DEFINE_BOOL(id, false, "enable " #description) \
-  DEFINE_IMPLICATION(harmony, id)
-
-HARMONY_FEATURES(FLAG_FEATURES)
-STAGED_FEATURES(FLAG_FEATURES)
-#undef FLAG_FEATURES
-
-#define FLAG_STAGED_FEATURES(id, description) DEFINE_IMPLICATION(es_staging, id)
-
-STAGED_FEATURES(FLAG_STAGED_FEATURES)
+  DEFINE_IMPLICATION(es_staging, id)
+HARMONY_STAGED(FLAG_STAGED_FEATURES)
 #undef FLAG_STAGED_FEATURES
 
 #define FLAG_SHIPPING_FEATURES(id, description) \
   DEFINE_BOOL_READONLY(id, true, "enable " #description)
-
-SHIPPING_FEATURES(FLAG_SHIPPING_FEATURES)
+HARMONY_SHIPPING(FLAG_SHIPPING_FEATURES)
 #undef FLAG_SHIPPING_FEATURES
+
 
 // Feature dependencies.
 DEFINE_IMPLICATION(harmony_modules, harmony_scoping)
 DEFINE_IMPLICATION(harmony_classes, harmony_scoping)
 DEFINE_IMPLICATION(harmony_classes, harmony_object_literals)
-
-DEFINE_BOOL(harmony_proxies, false, "enable harmony proxies")
-// TODO(rossberg): Reenable when problems are sorted out.
-// DEFINE_IMPLICATION(harmony, harmony_proxies)
 
 
 // Flags for experimental implementation features.
@@ -353,8 +369,9 @@ DEFINE_STRING(turbo_filter, "~", "optimization filter for TurboFan compiler")
 DEFINE_BOOL(trace_turbo, false, "trace generated TurboFan IR")
 DEFINE_STRING(trace_turbo_cfg_file, NULL,
               "trace turbo cfg graph (for C1 visualizer) to a given file name")
-DEFINE_BOOL(trace_turbo_types, true, "trace generated TurboFan types")
-DEFINE_BOOL(trace_turbo_scheduler, false, "trace generated TurboFan scheduler")
+DEFINE_BOOL(trace_turbo_types, true, "trace TurboFan's types")
+DEFINE_BOOL(trace_turbo_scheduler, false, "trace TurboFan's scheduler")
+DEFINE_BOOL(trace_turbo_reduction, false, "trace TurboFan's various reducers")
 DEFINE_BOOL(turbo_asm, false, "enable TurboFan for asm.js code")
 DEFINE_BOOL(turbo_verify, false, "verify TurboFan graphs at each phase")
 DEFINE_BOOL(turbo_stats, false, "print TurboFan statistics")
@@ -368,6 +385,7 @@ DEFINE_BOOL(turbo_inlining, false, "enable inlining in TurboFan")
 DEFINE_BOOL(turbo_inlining_intrinsics, false,
             "enable inlining of intrinsics in TurboFan")
 DEFINE_BOOL(trace_turbo_inlining, false, "trace TurboFan inlining")
+DEFINE_BOOL(loop_assignment_analysis, true, "perform loop assignment analysis")
 DEFINE_IMPLICATION(turbo_inlining_intrinsics, turbo_inlining)
 DEFINE_IMPLICATION(turbo_inlining, turbo_types)
 DEFINE_BOOL(turbo_profiling, false, "enable profiling in TurboFan")
@@ -401,6 +419,8 @@ DEFINE_BOOL(enable_vfp3, ENABLE_VFP3_DEFAULT,
             "enable use of VFP3 instructions if available")
 DEFINE_BOOL(enable_armv7, ENABLE_ARMV7_DEFAULT,
             "enable use of ARMv7 instructions if available (ARM only)")
+DEFINE_BOOL(enable_armv8, ENABLE_ARMV8_DEFAULT,
+            "enable use of ARMv8 instructions if available (ARM 32-bit only)")
 DEFINE_BOOL(enable_neon, ENABLE_NEON_DEFAULT,
             "enable use of NEON instructions if available (ARM only)")
 DEFINE_BOOL(enable_sudiv, true,

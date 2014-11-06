@@ -86,6 +86,7 @@ class ArmOperandGenerator : public OperandGenerator {
       case kArmMls:
       case kArmSmmul:
       case kArmSmmla:
+      case kArmUmull:
       case kArmSdiv:
       case kArmUdiv:
       case kArmBfc:
@@ -100,6 +101,10 @@ class ArmOperandGenerator : public OperandGenerator {
       case kArmVmodF64:
       case kArmVnegF64:
       case kArmVsqrtF64:
+      case kArmVfloorF64:
+      case kArmVceilF64:
+      case kArmVroundTruncateF64:
+      case kArmVroundTiesAwayF64:
       case kArmVcvtF32F64:
       case kArmVcvtF64F32:
       case kArmVcvtF64S32:
@@ -113,6 +118,14 @@ class ArmOperandGenerator : public OperandGenerator {
     return false;
   }
 };
+
+
+static void VisitRRFloat64(InstructionSelector* selector, ArchOpcode opcode,
+                           Node* node) {
+  ArmOperandGenerator g(selector);
+  selector->Emit(opcode, g.DefineAsRegister(node),
+                 g.UseRegister(node->InputAt(0)));
+}
 
 
 static void VisitRRRFloat64(InstructionSelector* selector, ArchOpcode opcode,
@@ -646,6 +659,15 @@ void InstructionSelector::VisitInt32MulHigh(Node* node) {
 }
 
 
+void InstructionSelector::VisitUint32MulHigh(Node* node) {
+  ArmOperandGenerator g(this);
+  InstructionOperand* outputs[] = {g.TempRegister(), g.DefineAsRegister(node)};
+  InstructionOperand* inputs[] = {g.UseRegister(node->InputAt(0)),
+                                  g.UseRegister(node->InputAt(1))};
+  Emit(kArmUmull, arraysize(outputs), outputs, arraysize(inputs), inputs);
+}
+
+
 static void EmitDiv(InstructionSelector* selector, ArchOpcode div_opcode,
                     ArchOpcode f64i32_opcode, ArchOpcode i32f64_opcode,
                     InstructionOperand* result_operand,
@@ -823,6 +845,30 @@ void InstructionSelector::VisitFloat64Mod(Node* node) {
 void InstructionSelector::VisitFloat64Sqrt(Node* node) {
   ArmOperandGenerator g(this);
   Emit(kArmVsqrtF64, g.DefineAsRegister(node), g.UseRegister(node->InputAt(0)));
+}
+
+
+void InstructionSelector::VisitFloat64Floor(Node* node) {
+  DCHECK(CpuFeatures::IsSupported(ARMv8));
+  VisitRRFloat64(this, kArmVfloorF64, node);
+}
+
+
+void InstructionSelector::VisitFloat64Ceil(Node* node) {
+  DCHECK(CpuFeatures::IsSupported(ARMv8));
+  VisitRRFloat64(this, kArmVceilF64, node);
+}
+
+
+void InstructionSelector::VisitFloat64RoundTruncate(Node* node) {
+  DCHECK(CpuFeatures::IsSupported(ARMv8));
+  VisitRRFloat64(this, kArmVroundTruncateF64, node);
+}
+
+
+void InstructionSelector::VisitFloat64RoundTiesAway(Node* node) {
+  DCHECK(CpuFeatures::IsSupported(ARMv8));
+  VisitRRFloat64(this, kArmVroundTiesAwayF64, node);
 }
 
 
@@ -1139,8 +1185,21 @@ void InstructionSelector::VisitFloat64LessThanOrEqual(Node* node) {
 // static
 MachineOperatorBuilder::Flags
 InstructionSelector::SupportedMachineOperatorFlags() {
-  return MachineOperatorBuilder::Flag::kNoFlags;
+  MachineOperatorBuilder::Flags flags =
+      MachineOperatorBuilder::kInt32DivIsSafe |
+      MachineOperatorBuilder::kInt32ModIsSafe |
+      MachineOperatorBuilder::kUint32DivIsSafe |
+      MachineOperatorBuilder::kUint32ModIsSafe;
+
+  if (CpuFeatures::IsSupported(ARMv8)) {
+    flags |= MachineOperatorBuilder::kFloat64Floor |
+             MachineOperatorBuilder::kFloat64Ceil |
+             MachineOperatorBuilder::kFloat64RoundTruncate |
+             MachineOperatorBuilder::kFloat64RoundTiesAway;
+  }
+  return flags;
 }
+
 }  // namespace compiler
 }  // namespace internal
 }  // namespace v8

@@ -48,12 +48,24 @@ Matcher<Node*> IsFloat64Constant(const Matcher<double>& value_matcher);
 Matcher<Node*> IsInt32Constant(const Matcher<int32_t>& value_matcher);
 Matcher<Node*> IsInt64Constant(const Matcher<int64_t>& value_matcher);
 Matcher<Node*> IsNumberConstant(const Matcher<double>& value_matcher);
+Matcher<Node*> IsSelect(const Matcher<MachineType>& type_matcher,
+                        const Matcher<Node*>& value0_matcher,
+                        const Matcher<Node*>& value1_matcher,
+                        const Matcher<Node*>& value2_matcher);
 Matcher<Node*> IsPhi(const Matcher<MachineType>& type_matcher,
                      const Matcher<Node*>& value0_matcher,
                      const Matcher<Node*>& value1_matcher,
                      const Matcher<Node*>& merge_matcher);
+Matcher<Node*> IsEffectPhi(const Matcher<Node*>& effect0_matcher,
+                           const Matcher<Node*>& effect1_matcher,
+                           const Matcher<Node*>& merge_matcher);
 Matcher<Node*> IsProjection(const Matcher<size_t>& index_matcher,
                             const Matcher<Node*>& base_matcher);
+Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
+                      const Matcher<Node*>& value0_matcher,
+                      const Matcher<Node*>& value1_matcher,
+                      const Matcher<Node*>& effect_matcher,
+                      const Matcher<Node*>& control_matcher);
 Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
                       const Matcher<Node*>& value0_matcher,
                       const Matcher<Node*>& value1_matcher,
@@ -62,19 +74,24 @@ Matcher<Node*> IsCall(const Matcher<CallDescriptor*>& descriptor_matcher,
                       const Matcher<Node*>& effect_matcher,
                       const Matcher<Node*>& control_matcher);
 
+Matcher<Node*> IsBooleanNot(const Matcher<Node*>& value_matcher);
+Matcher<Node*> IsNumberEqual(const Matcher<Node*>& lhs_matcher,
+                             const Matcher<Node*>& rhs_matcher);
 Matcher<Node*> IsNumberLessThan(const Matcher<Node*>& lhs_matcher,
                                 const Matcher<Node*>& rhs_matcher);
 Matcher<Node*> IsNumberSubtract(const Matcher<Node*>& lhs_matcher,
                                 const Matcher<Node*>& rhs_matcher);
+Matcher<Node*> IsNumberMultiply(const Matcher<Node*>& lhs_matcher,
+                                const Matcher<Node*>& rhs_matcher);
 Matcher<Node*> IsLoadField(const Matcher<FieldAccess>& access_matcher,
                            const Matcher<Node*>& base_matcher,
-                           const Matcher<Node*>& effect_matcher);
+                           const Matcher<Node*>& effect_matcher,
+                           const Matcher<Node*>& control_matcher);
 Matcher<Node*> IsLoadElement(const Matcher<ElementAccess>& access_matcher,
                              const Matcher<Node*>& base_matcher,
                              const Matcher<Node*>& index_matcher,
                              const Matcher<Node*>& length_matcher,
-                             const Matcher<Node*>& effect_matcher,
-                             const Matcher<Node*>& control_matcher);
+                             const Matcher<Node*>& effect_matcher);
 Matcher<Node*> IsStoreElement(const Matcher<ElementAccess>& access_matcher,
                               const Matcher<Node*>& base_matcher,
                               const Matcher<Node*>& index_matcher,
@@ -140,6 +157,10 @@ Matcher<Node*> IsTruncateFloat64ToFloat32(const Matcher<Node*>& input_matcher);
 Matcher<Node*> IsTruncateFloat64ToInt32(const Matcher<Node*>& input_matcher);
 Matcher<Node*> IsTruncateInt64ToInt32(const Matcher<Node*>& input_matcher);
 Matcher<Node*> IsFloat64Sqrt(const Matcher<Node*>& input_matcher);
+Matcher<Node*> IsFloat64Floor(const Matcher<Node*>& input_matcher);
+Matcher<Node*> IsFloat64Ceil(const Matcher<Node*>& input_matcher);
+Matcher<Node*> IsFloat64RoundTruncate(const Matcher<Node*>& input_matcher);
+Matcher<Node*> IsFloat64RoundTiesAway(const Matcher<Node*>& input_matcher);
 
 }  // namespace compiler
 }  // namespace internal

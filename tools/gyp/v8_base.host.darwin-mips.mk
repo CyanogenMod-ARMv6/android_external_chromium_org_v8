@@ -40,6 +40,7 @@ LOCAL_SRC_FILES := \
 	v8/src/basic-block-profiler.cc \
 	v8/src/bignum-dtoa.cc \
 	v8/src/bignum.cc \
+	v8/src/bit-vector.cc \
 	v8/src/bootstrapper.cc \
 	v8/src/builtins.cc \
 	v8/src/cached-powers.cc \
@@ -53,6 +54,7 @@ LOCAL_SRC_FILES := \
 	v8/src/compilation-statistics.cc \
 	v8/src/compiler/access-builder.cc \
 	v8/src/compiler/ast-graph-builder.cc \
+	v8/src/compiler/ast-loop-assignment-analyzer.cc \
 	v8/src/compiler/basic-block-instrumentor.cc \
 	v8/src/compiler/change-lowering.cc \
 	v8/src/compiler/code-generator.cc \
@@ -80,15 +82,16 @@ LOCAL_SRC_FILES := \
 	v8/src/compiler/machine-operator.cc \
 	v8/src/compiler/machine-type.cc \
 	v8/src/compiler/node-cache.cc \
-	v8/src/compiler/node-matchers.cc \
 	v8/src/compiler/node.cc \
 	v8/src/compiler/operator.cc \
 	v8/src/compiler/pipeline.cc \
 	v8/src/compiler/pipeline-statistics.cc \
 	v8/src/compiler/raw-machine-assembler.cc \
 	v8/src/compiler/register-allocator.cc \
+	v8/src/compiler/register-configuration.cc \
 	v8/src/compiler/schedule.cc \
 	v8/src/compiler/scheduler.cc \
+	v8/src/compiler/select-lowering.cc \
 	v8/src/compiler/simplified-lowering.cc \
 	v8/src/compiler/simplified-operator-reducer.cc \
 	v8/src/compiler/simplified-operator.cc \
@@ -102,7 +105,6 @@ LOCAL_SRC_FILES := \
 	v8/src/conversions.cc \
 	v8/src/counters.cc \
 	v8/src/cpu-profiler.cc \
-	v8/src/data-flow.cc \
 	v8/src/date.cc \
 	v8/src/dateparser.cc \
 	v8/src/debug.cc \
@@ -325,11 +327,13 @@ MY_DEFS_Debug := \
 	'-DUSE_PROPRIETARY_CODECS' \
 	'-DENABLE_BROWSER_CDMS' \
 	'-DENABLE_CONFIGURATION_POLICY' \
+	'-DENABLE_NOTIFICATIONS' \
 	'-DDISCARDABLE_MEMORY_ALWAYS_SUPPORTED_NATIVELY' \
 	'-DSYSTEM_NATIVELY_SIGNALS_MEMORY_PRESSURE' \
-	'-DENABLE_EGLIMAGE=1' \
+	'-DDONT_EMBED_BUILD_METADATA' \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
+	'-DENABLE_BASIC_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
@@ -343,6 +347,7 @@ MY_DEFS_Debug := \
 	'-DU_USING_ICU_NAMESPACE=0' \
 	'-DU_ENABLE_DYLOAD=0' \
 	'-DU_STATIC_IMPLEMENTATION' \
+	'-DUSE_LIBPCI=1' \
 	'-DUSE_OPENSSL=1' \
 	'-DUSE_OPENSSL_CERTS=1' \
 	'-DDYNAMIC_ANNOTATIONS_ENABLED=1' \
@@ -416,11 +421,13 @@ MY_DEFS_Release := \
 	'-DUSE_PROPRIETARY_CODECS' \
 	'-DENABLE_BROWSER_CDMS' \
 	'-DENABLE_CONFIGURATION_POLICY' \
+	'-DENABLE_NOTIFICATIONS' \
 	'-DDISCARDABLE_MEMORY_ALWAYS_SUPPORTED_NATIVELY' \
 	'-DSYSTEM_NATIVELY_SIGNALS_MEMORY_PRESSURE' \
-	'-DENABLE_EGLIMAGE=1' \
+	'-DDONT_EMBED_BUILD_METADATA' \
 	'-DCLD_VERSION=1' \
 	'-DENABLE_PRINTING=1' \
+	'-DENABLE_BASIC_PRINTING=1' \
 	'-DENABLE_MANAGED_USERS=1' \
 	'-DVIDEO_HOLE=1' \
 	'-DENABLE_LOAD_COMPLETION_HACKS=1' \
@@ -434,6 +441,7 @@ MY_DEFS_Release := \
 	'-DU_USING_ICU_NAMESPACE=0' \
 	'-DU_ENABLE_DYLOAD=0' \
 	'-DU_STATIC_IMPLEMENTATION' \
+	'-DUSE_LIBPCI=1' \
 	'-DUSE_OPENSSL=1' \
 	'-DUSE_OPENSSL_CERTS=1' \
 	'-DNDEBUG' \
@@ -468,6 +476,7 @@ LOCAL_CPPFLAGS := $(LOCAL_CPPFLAGS_$(GYP_CONFIGURATION))
 LOCAL_ASFLAGS := $(LOCAL_CFLAGS)
 ### Rules for final target.
 ### Set directly by aosp_build_settings.
+LOCAL_CXX_STL := libstdc++
 LOCAL_CLANG := true
 
 # Add target alias to "gyp_all_modules" target.

@@ -892,18 +892,14 @@ void MemoryChunk::IncrementLiveBytesFromMutator(Address address, int by) {
 // -----------------------------------------------------------------------------
 // PagedSpace implementation
 
-PagedSpace::PagedSpace(Heap* heap, intptr_t max_capacity, AllocationSpace id,
+PagedSpace::PagedSpace(Heap* heap, intptr_t max_capacity, AllocationSpace space,
                        Executability executable)
-    : Space(heap, id, executable),
+    : Space(heap, space, executable),
       free_list_(this),
       unswept_free_bytes_(0),
       end_of_unswept_pages_(NULL),
       emergency_memory_(NULL) {
-  if (id == CODE_SPACE) {
-    area_size_ = heap->isolate()->memory_allocator()->CodePageAreaSize();
-  } else {
-    area_size_ = Page::kPageSize - Page::kObjectStartOffset;
-  }
+  area_size_ = MemoryAllocator::PageAreaSize(space);
   max_capacity_ =
       (RoundDown(max_capacity, Page::kPageSize) / Page::kPageSize) * AreaSize();
   accounting_stats_.Clear();
@@ -2573,7 +2569,8 @@ void PagedSpace::PrepareForMarkCompact() {
 
 
 intptr_t PagedSpace::SizeOfObjects() {
-  DCHECK(heap()->mark_compact_collector()->sweeping_in_progress() ||
+  DCHECK(FLAG_predictable ||
+         heap()->mark_compact_collector()->sweeping_in_progress() ||
          (unswept_free_bytes_ == 0));
   return Size() - unswept_free_bytes_ - (limit() - top());
 }

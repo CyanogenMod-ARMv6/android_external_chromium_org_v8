@@ -740,6 +740,28 @@ void MacroAssembler::Mult(Register rs, const Operand& rt) {
 }
 
 
+void MacroAssembler::Mulhu(Register rd, Register rs, const Operand& rt) {
+  if (rt.is_reg()) {
+    if (!IsMipsArchVariant(kMips32r6)) {
+      multu(rs, rt.rm());
+      mfhi(rd);
+    } else {
+      muhu(rd, rs, rt.rm());
+    }
+  } else {
+    // li handles the relocation.
+    DCHECK(!rs.is(at));
+    li(at, rt);
+    if (!IsMipsArchVariant(kMips32r6)) {
+      multu(rs, at);
+      mfhi(rd);
+    } else {
+      muhu(rd, rs, at);
+    }
+  }
+}
+
+
 void MacroAssembler::Multu(Register rs, const Operand& rt) {
   if (rt.is_reg()) {
     multu(rs, rt.rm());
@@ -2015,18 +2037,26 @@ void MacroAssembler::BranchShort(int16_t offset, Condition cond, Register rs,
         b(offset);
         break;
       case eq:
-        // We don't want any other register but scratch clobbered.
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        beq(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          beq(rs, zero_reg, offset);
+        } else {
+          // We don't want any other register but scratch clobbered.
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          beq(rs, r2, offset);
+        }
         break;
       case ne:
-        // We don't want any other register but scratch clobbered.
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        bne(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          bne(rs, zero_reg, offset);
+        } else {
+          // We don't want any other register but scratch clobbered.
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          bne(rs, r2, offset);
+        }
         break;
       // Signed comparison.
       case greater:
@@ -2268,18 +2298,28 @@ void MacroAssembler::BranchShort(Label* L, Condition cond, Register rs,
         b(offset);
         break;
       case eq:
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        offset = shifted_branch_offset(L, false);
-        beq(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          offset = shifted_branch_offset(L, false);
+          beq(rs, zero_reg, offset);
+        } else {
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          offset = shifted_branch_offset(L, false);
+          beq(rs, r2, offset);
+        }
         break;
       case ne:
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        offset = shifted_branch_offset(L, false);
-        bne(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          offset = shifted_branch_offset(L, false);
+          bne(rs, zero_reg, offset);
+        } else {
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          offset = shifted_branch_offset(L, false);
+          bne(rs, r2, offset);
+        }
         break;
       // Signed comparison.
       case greater:
