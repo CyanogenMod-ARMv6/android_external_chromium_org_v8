@@ -274,14 +274,14 @@ LOCAL_SRC_FILES := \
 	v8/src/x64/lithium-x64.cc \
 	v8/src/x64/macro-assembler-x64.cc \
 	v8/src/x64/regexp-macro-assembler-x64.cc \
-	v8/src/compiler/x64/code-generator-x64.cc \
-	v8/src/compiler/x64/instruction-selector-x64.cc \
-	v8/src/compiler/x64/linkage-x64.cc \
 	v8/src/ic/x64/access-compiler-x64.cc \
 	v8/src/ic/x64/handler-compiler-x64.cc \
 	v8/src/ic/x64/ic-x64.cc \
 	v8/src/ic/x64/ic-compiler-x64.cc \
-	v8/src/ic/x64/stub-cache-x64.cc
+	v8/src/ic/x64/stub-cache-x64.cc \
+	v8/src/compiler/x64/code-generator-x64.cc \
+	v8/src/compiler/x64/instruction-selector-x64.cc \
+	v8/src/compiler/x64/linkage-x64.cc
 
 
 # Flags passed to both C and C++ files.
